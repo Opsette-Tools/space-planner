@@ -5,17 +5,53 @@ import { CanvasToolbar } from "@/components/editor/CanvasToolbar";
 import { EditorTopBar } from "@/components/editor/EditorTopBar";
 import { Inspector } from "@/components/editor/Inspector";
 import { ObjectLibrary } from "@/components/editor/ObjectLibrary";
-import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useHistory } from "@/hooks/useHistory";
 import { deleteLayout, genId, getLayout, saveLayout } from "@/lib/storage";
 import type { Layout, LayoutItem } from "@/lib/types";
 import type { LibraryDef } from "@/lib/objectLibrary";
 import { makeItem } from "@/lib/objectLibrary";
-import { downloadDataUrl, downloadJSON, importJSON, nodeToPng } from "@/lib/exporters";
-import { Layers, Sliders } from "lucide-react";
+import {
+  downloadDataUrl,
+  downloadJSON,
+  importJSON,
+  nodeToPng,
+} from "@/lib/exporters";
+import { Copy, Layers, Sliders, Trash2 } from "lucide-react";
+
+/** Compute the set of ids dragged/edited together when `id` is selected:
+ *  the id itself plus all its groupmates. */
+function expandToGroup(items: LayoutItem[], ids: string[]): string[] {
+  const set = new Set(ids);
+  const groups = new Set<string>();
+  for (const it of items) {
+    if (set.has(it.id) && it.groupId) groups.add(it.groupId);
+  }
+  if (groups.size === 0) return Array.from(set);
+  for (const it of items) {
+    if (it.groupId && groups.has(it.groupId)) set.add(it.id);
+  }
+  return Array.from(set);
+}
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -23,8 +59,10 @@ export default function EditorPage() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
 
-  const [layout, setLayout] = useState<Layout | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const history = useHistory<Layout | null>(null);
+  const layout = history.state;
+
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [zoomPct, setZoomPct] = useState(40);
   const [libOpen, setLibOpen] = useState(false);
@@ -45,11 +83,13 @@ export default function EditorPage() {
         navigate("/");
         return;
       }
-      setLayout(l);
+      history.reset(l);
+      setSelectedIds([]);
       setTimeout(() => {
         loadingRef.current = false;
       }, 200);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, navigate, toast]);
 
   // Debounced autosave
@@ -58,7 +98,6 @@ export default function EditorPage() {
     setSaving(true);
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(async () => {
-      // generate thumbnail off the stage
       let thumbnail: string | undefined;
       try {
         const stage = canvasRef.current?.getStage();
@@ -81,90 +120,182 @@ export default function EditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout]);
 
-  const updateItem = useCallback((itemId: string, patch: Partial<LayoutItem>) => {
-    setLayout((prev) =>
-      prev
-        ? { ...prev, items: prev.items.map((i) => (i.id === itemId ? { ...i, ...patch } : i)) }
-        : prev,
-    );
-  }, []);
+  // ---- Selection helpers ----
+  const handleSelectionChange = useCallback(
+    (ids: string[]) => {
+      setSelectedIds(ids);
+    },
+    [],
+  );
 
-  const updateStyle = useCallback((itemId: string, patch: Partial<LayoutItem["style"]>) => {
-    setLayout((prev) =>
-      prev
-        ? {
-            ...prev,
-            items: prev.items.map((i) => (i.id === itemId ? { ...i, style: { ...i.style, ...patch } } : i)),
-          }
-        : prev,
-    );
-  }, []);
+  // ---- Mutators (history-aware) ----
+  /** Apply patch to a single item, push history entry. */
+  const updateItem = useCallback(
+    (itemId: string, patch: Partial<LayoutItem>) => {
+      history.set((prev) =>
+        prev
+          ? {
+              ...prev,
+              items: prev.items.map((i) =>
+                i.id === itemId ? { ...i, ...patch } : i,
+              ),
+            }
+          : prev,
+      );
+    },
+    [history],
+  );
+
+  /** Patch many items in one history step (used during drag/resize/rotate via
+   *  coalesce). */
+  const updateItems = useCallback(
+    (patches: Record<string, Partial<LayoutItem>>) => {
+      history.set((prev) =>
+        prev
+          ? {
+              ...prev,
+              items: prev.items.map((i) =>
+                patches[i.id] ? { ...i, ...patches[i.id] } : i,
+              ),
+            }
+          : prev,
+      );
+    },
+    [history],
+  );
+
+  const updateStyle = useCallback(
+    (itemId: string, patch: Partial<LayoutItem["style"]>) => {
+      history.set((prev) =>
+        prev
+          ? {
+              ...prev,
+              items: prev.items.map((i) =>
+                i.id === itemId
+                  ? { ...i, style: { ...i.style, ...patch } }
+                  : i,
+              ),
+            }
+          : prev,
+      );
+    },
+    [history],
+  );
 
   const addItemFromDef = useCallback(
     (def: LibraryDef) => {
-      setLayout((prev) => {
-        if (!prev) return prev;
-        const cx = prev.canvas.width / 2;
-        const cy = prev.canvas.height / 2;
-        const maxZ = prev.items.reduce((m, i) => Math.max(m, i.zIndex), 0);
-        const item = makeItem(def, cx, cy, maxZ + 1, genId);
-        setSelectedId(item.id);
-        return { ...prev, items: [...prev.items, item] };
-      });
+      if (!layout) return;
+      const cx = layout.canvas.width / 2;
+      const cy = layout.canvas.height / 2;
+      const maxZ = layout.items.reduce((m, i) => Math.max(m, i.zIndex), 0);
+      const item = makeItem(def, cx, cy, maxZ + 1, genId);
+      history.set((prev) =>
+        prev ? { ...prev, items: [...prev.items, item] } : prev,
+      );
+      setSelectedIds([item.id]);
       setLibOpen(false);
-      toast({ title: `Added ${def.label}`, description: "Tap to move, resize, or rotate." });
+      toast({ title: `Added ${def.label}` });
     },
-    [toast],
+    [layout, history, toast],
   );
 
-  const duplicateItem = (itemId: string) => {
-    setLayout((prev) => {
-      if (!prev) return prev;
-      const it = prev.items.find((i) => i.id === itemId);
-      if (!it) return prev;
-      const maxZ = prev.items.reduce((m, i) => Math.max(m, i.zIndex), 0);
-      const copy: LayoutItem = { ...it, id: genId(), x: it.x + 20, y: it.y + 20, zIndex: maxZ + 1 };
-      setSelectedId(copy.id);
-      return { ...prev, items: [...prev.items, copy] };
-    });
-  };
-
-  const deleteItem = (itemId: string) => {
-    setLayout((prev) => (prev ? { ...prev, items: prev.items.filter((i) => i.id !== itemId) } : prev));
-    setSelectedId(null);
-  };
-
-  const reorder = (itemId: string, dir: 1 | -1) => {
-    setLayout((prev) => {
-      if (!prev) return prev;
+  const duplicateSelection = useCallback(() => {
+    if (!layout || selectedIds.length === 0) return;
+    const expanded = new Set(expandToGroup(layout.items, selectedIds));
+    const toCopy = layout.items.filter((i) => expanded.has(i.id));
+    if (toCopy.length === 0) return;
+    const maxZ = layout.items.reduce((m, i) => Math.max(m, i.zIndex), 0);
+    // Remap groupIds so duplicates form their own group
+    const groupRemap = new Map<string, string>();
+    const newItems: LayoutItem[] = toCopy.map((it, idx) => {
+      let newGroupId = it.groupId;
+      if (it.groupId) {
+        if (!groupRemap.has(it.groupId)) groupRemap.set(it.groupId, genId());
+        newGroupId = groupRemap.get(it.groupId);
+      }
       return {
-        ...prev,
-        items: prev.items.map((i) =>
-          i.id === itemId ? { ...i, zIndex: i.zIndex + dir * 1 } : i,
-        ),
+        ...it,
+        id: genId(),
+        x: it.x + 24,
+        y: it.y + 24,
+        zIndex: maxZ + 1 + idx,
+        groupId: newGroupId,
       };
     });
-  };
+    history.set((prev) =>
+      prev ? { ...prev, items: [...prev.items, ...newItems] } : prev,
+    );
+    setSelectedIds(newItems.map((i) => i.id));
+  }, [layout, selectedIds, history]);
 
-  // Keyboard shortcuts
+  const deleteSelection = useCallback(() => {
+    if (!layout || selectedIds.length === 0) return;
+    const expanded = new Set(expandToGroup(layout.items, selectedIds));
+    history.set((prev) =>
+      prev
+        ? { ...prev, items: prev.items.filter((i) => !expanded.has(i.id)) }
+        : prev,
+    );
+    setSelectedIds([]);
+  }, [layout, selectedIds, history]);
+
+  const reorderSelection = useCallback(
+    (dir: 1 | -1) => {
+      if (!layout || selectedIds.length === 0) return;
+      const sel = new Set(selectedIds);
+      history.set((prev) =>
+        prev
+          ? {
+              ...prev,
+              items: prev.items.map((i) =>
+                sel.has(i.id) ? { ...i, zIndex: i.zIndex + dir } : i,
+              ),
+            }
+          : prev,
+      );
+    },
+    [layout, selectedIds, history],
+  );
+
+  // ---- Keyboard shortcuts ----
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+      // Undo / Redo
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        deleteItem(selectedId);
+        if (e.shiftKey) history.redo();
+        else history.undo();
+        return;
       }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d" && selectedId) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y") {
         e.preventDefault();
-        duplicateItem(selectedId);
+        history.redo();
+        return;
       }
-      if (e.key === "Escape") setSelectedId(null);
+      if (
+        (e.key === "Delete" || e.key === "Backspace") &&
+        selectedIds.length > 0
+      ) {
+        e.preventDefault();
+        deleteSelection();
+        return;
+      }
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.key.toLowerCase() === "d" &&
+        selectedIds.length > 0
+      ) {
+        e.preventDefault();
+        duplicateSelection();
+        return;
+      }
+      if (e.key === "Escape") setSelectedIds([]);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
+  }, [selectedIds, history, deleteSelection, duplicateSelection]);
 
   const handleExportJSON = () => {
     if (layout) downloadJSON(layout);
@@ -181,7 +312,7 @@ export default function EditorPage() {
       });
       downloadDataUrl(dataUrl, `${layout.name}.png`);
       toast({ title: "PNG exported" });
-    } catch (e) {
+    } catch {
       toast({ title: "PNG export failed", variant: "destructive" });
     }
   };
@@ -194,51 +325,106 @@ export default function EditorPage() {
     if (!file) return;
     try {
       const imported = await importJSON(file);
-      const fresh: Layout = { ...imported, id: genId(), createdAt: Date.now(), updatedAt: Date.now() };
+      const fresh: Layout = {
+        ...imported,
+        id: genId(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
       await saveLayout(fresh);
       toast({ title: "Imported", description: imported.name });
       navigate(`/editor/${fresh.id}`);
     } catch {
-      toast({ title: "Import failed", description: "Invalid layout file", variant: "destructive" });
+      toast({
+        title: "Import failed",
+        description: "Invalid layout file",
+        variant: "destructive",
+      });
     }
   };
 
-  const handleDuplicate = async () => {
+  const handleDuplicateLayout = async () => {
     if (!layout) return;
-    const copy: Layout = { ...layout, id: genId(), name: `${layout.name} (copy)`, createdAt: Date.now(), updatedAt: Date.now() };
+    const copy: Layout = {
+      ...layout,
+      id: genId(),
+      name: `${layout.name} (copy)`,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
     await saveLayout(copy);
     navigate(`/editor/${copy.id}`);
   };
 
-  const handleDelete = async () => {
+  const handleDeleteLayout = async () => {
     if (!layout) return;
     await deleteLayout(layout.id);
     navigate("/");
   };
 
   const selectedItem = useMemo(
-    () => (layout && selectedId ? layout.items.find((i) => i.id === selectedId) ?? null : null),
-    [layout, selectedId],
+    () =>
+      layout && selectedIds.length === 1
+        ? layout.items.find((i) => i.id === selectedIds[0]) ?? null
+        : null,
+    [layout, selectedIds],
   );
 
   if (!layout) {
     return (
-      <div className="flex items-center justify-center h-screen text-muted-foreground">Loading…</div>
+      <div className="flex items-center justify-center h-screen text-muted-foreground">
+        Loading…
+      </div>
     );
   }
+
+  const inspector = selectedItem ? (
+    <Inspector
+      item={selectedItem}
+      onChange={(p) => updateItem(selectedItem.id, p)}
+      onStyleChange={(p) => updateStyle(selectedItem.id, p)}
+      onDuplicate={duplicateSelection}
+      onDelete={deleteSelection}
+      onForward={() => reorderSelection(1)}
+      onBackward={() => reorderSelection(-1)}
+    />
+  ) : null;
+
+  const multiSelectBar =
+    selectedIds.length > 1 ? (
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/40">
+        <span className="text-sm font-medium">
+          {selectedIds.length} items selected
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={duplicateSelection}>
+            <Copy className="w-4 h-4" /> Duplicate
+          </Button>
+          <Button size="sm" variant="destructive" onClick={deleteSelection}>
+            <Trash2 className="w-4 h-4" /> Delete
+          </Button>
+        </div>
+      </div>
+    ) : null;
 
   return (
     <div className="flex flex-col h-screen bg-background">
       <EditorTopBar
         name={layout.name}
-        onNameChange={(n) => setLayout({ ...layout, name: n })}
+        onNameChange={(n) =>
+          history.replace((prev) => (prev ? { ...prev, name: n } : prev))
+        }
         onBack={() => navigate("/")}
         saving={saving}
         zoomPct={zoomPct}
+        canUndo={history.canUndo}
+        canRedo={history.canRedo}
+        onUndo={history.undo}
+        onRedo={history.redo}
         onExportJSON={handleExportJSON}
         onExportPNG={handleExportPNG}
         onImportJSON={handleImportClick}
-        onDuplicate={handleDuplicate}
+        onDuplicate={handleDuplicateLayout}
         onDelete={() => setConfirmDelete(true)}
       />
 
@@ -261,70 +447,111 @@ export default function EditorPage() {
           </aside>
         )}
 
-        {/* Canvas */}
-        <div className="flex-1 relative min-w-0">
-          <Canvas
-            ref={canvasRef}
-            layout={layout}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            onUpdateItem={updateItem}
-            onZoomChange={(z) => setZoomPct(Math.round(z * 100))}
-          />
-          <CanvasToolbar
-            showGrid={layout.canvas.showGrid}
-            snap={layout.canvas.snap}
-            onToggleGrid={() => setLayout({ ...layout, canvas: { ...layout.canvas, showGrid: !layout.canvas.showGrid } })}
-            onToggleSnap={() => setLayout({ ...layout, canvas: { ...layout.canvas, snap: !layout.canvas.snap } })}
-            onZoomIn={() => canvasRef.current?.zoomIn()}
-            onZoomOut={() => canvasRef.current?.zoomOut()}
-            onReset={() => canvasRef.current?.resetView()}
-            onFit={() => canvasRef.current?.fitToContent()}
-          />
+        {/* Canvas + toolbars */}
+        <div className="flex-1 relative min-w-0 flex flex-col">
+          {multiSelectBar}
+          <div className="flex-1 relative min-h-0">
+            <Canvas
+              ref={canvasRef}
+              layout={layout}
+              selectedIds={selectedIds}
+              onSelectionChange={handleSelectionChange}
+              onUpdateItems={updateItems}
+              onGestureStart={history.beginCoalesce}
+              onGestureEnd={history.commitCoalesce}
+              onZoomChange={(z) => setZoomPct(Math.round(z * 100))}
+            />
+            <CanvasToolbar
+              showGrid={layout.canvas.showGrid}
+              snap={layout.canvas.snap}
+              gridSize={layout.canvas.gridSize}
+              onToggleGrid={() =>
+                history.set((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        canvas: {
+                          ...prev.canvas,
+                          showGrid: !prev.canvas.showGrid,
+                        },
+                      }
+                    : prev,
+                )
+              }
+              onToggleSnap={() =>
+                history.set((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        canvas: { ...prev.canvas, snap: !prev.canvas.snap },
+                      }
+                    : prev,
+                )
+              }
+              onCycleGridSize={() =>
+                history.set((prev) => {
+                  if (!prev) return prev;
+                  const order = [8, 16, 32];
+                  const idx = order.indexOf(prev.canvas.gridSize);
+                  const next = order[(idx + 1) % order.length] ?? 8;
+                  return {
+                    ...prev,
+                    canvas: { ...prev.canvas, gridSize: next },
+                  };
+                })
+              }
+              onZoomIn={() => canvasRef.current?.zoomIn()}
+              onZoomOut={() => canvasRef.current?.zoomOut()}
+              onReset={() => canvasRef.current?.resetView()}
+              onFit={() => canvasRef.current?.fitToContent()}
+            />
 
-          {/* Mobile bottom action bar */}
-          {isMobile && (
-            <div className="absolute top-3 left-3 right-3 flex gap-2 z-10">
-              <Sheet open={libOpen} onOpenChange={setLibOpen}>
-                <SheetTrigger asChild>
-                  <Button size="sm" className="rounded-full shadow-md">
-                    <Layers className="w-4 h-4" /> Add Object
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="bottom" className="h-[70vh] flex flex-col p-0">
-                  <SheetHeader className="px-4 pt-4 pb-2">
-                    <SheetTitle>Object Library</SheetTitle>
-                  </SheetHeader>
-                  <div className="flex-1 min-h-0">
-                    <ObjectLibrary onPick={addItemFromDef} />
-                  </div>
-                </SheetContent>
-              </Sheet>
-              {selectedItem && (
-                <Sheet>
+            {/* Mobile floating action bar */}
+            {isMobile && (
+              <div className="absolute top-3 left-3 right-3 flex gap-2 z-10">
+                <Sheet open={libOpen} onOpenChange={setLibOpen}>
                   <SheetTrigger asChild>
-                    <Button size="sm" variant="secondary" className="rounded-full shadow-md ml-auto">
-                      <Sliders className="w-4 h-4" /> Edit
+                    <Button size="sm" className="rounded-full shadow-md">
+                      <Layers className="w-4 h-4" /> Add
                     </Button>
                   </SheetTrigger>
-                  <SheetContent side="bottom" className="h-[80vh] overflow-y-auto p-0">
-                    <SheetHeader className="px-4 pt-4 pb-1">
-                      <SheetTitle>Inspector</SheetTitle>
+                  <SheetContent
+                    side="bottom"
+                    className="h-[70vh] flex flex-col p-0"
+                  >
+                    <SheetHeader className="px-4 pt-4 pb-2">
+                      <SheetTitle>Object Library</SheetTitle>
                     </SheetHeader>
-                    <Inspector
-                      item={selectedItem}
-                      onChange={(p) => updateItem(selectedItem.id, p)}
-                      onStyleChange={(p) => updateStyle(selectedItem.id, p)}
-                      onDuplicate={() => duplicateItem(selectedItem.id)}
-                      onDelete={() => deleteItem(selectedItem.id)}
-                      onForward={() => reorder(selectedItem.id, 1)}
-                      onBackward={() => reorder(selectedItem.id, -1)}
-                    />
+                    <div className="flex-1 min-h-0">
+                      <ObjectLibrary onPick={addItemFromDef} />
+                    </div>
                   </SheetContent>
                 </Sheet>
-              )}
-            </div>
-          )}
+                {selectedItem && (
+                  <Sheet>
+                    <SheetTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="rounded-full shadow-md ml-auto"
+                      >
+                        <Sliders className="w-4 h-4" /> Edit
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent
+                      side="bottom"
+                      className="h-[80vh] overflow-y-auto p-0"
+                    >
+                      <SheetHeader className="px-4 pt-4 pb-1">
+                        <SheetTitle>Inspector</SheetTitle>
+                      </SheetHeader>
+                      {inspector}
+                    </SheetContent>
+                  </Sheet>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Desktop inspector */}
@@ -333,15 +560,7 @@ export default function EditorPage() {
             <div className="px-3 py-2.5 border-b border-border text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Inspector
             </div>
-            <Inspector
-              item={selectedItem}
-              onChange={(p) => updateItem(selectedItem.id, p)}
-              onStyleChange={(p) => updateStyle(selectedItem.id, p)}
-              onDuplicate={() => duplicateItem(selectedItem.id)}
-              onDelete={() => deleteItem(selectedItem.id)}
-              onForward={() => reorder(selectedItem.id, 1)}
-              onBackward={() => reorder(selectedItem.id, -1)}
-            />
+            {inspector}
           </aside>
         )}
       </div>
@@ -356,7 +575,10 @@ export default function EditorPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={handleDeleteLayout}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

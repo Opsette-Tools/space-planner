@@ -16,13 +16,59 @@ function place(type: string, x: number, y: number, z: number, overrides: Partial
   return { ...it, ...overrides };
 }
 
-function ring(type: string, cx: number, cy: number, radius: number, count: number, startZ: number): LayoutItem[] {
-  const out: LayoutItem[] = [];
-  for (let i = 0; i < count; i++) {
-    const a = (i / count) * Math.PI * 2;
-    out.push(place(type, cx + Math.cos(a) * radius - 16, cy + Math.sin(a) * radius - 16, startZ + i, { rotation: (a * 180) / Math.PI + 90 }));
+/** Build a grouped round-table set: a round table surrounded by `chairCount`
+ *  chairs. All items share a generated groupId so they move/rotate together. */
+function tableSet(
+  cx: number,
+  cy: number,
+  startZ: number,
+  opts: { tableSize?: number; chairCount?: number; label?: string; chairOffset?: number } = {},
+): LayoutItem[] {
+  const tableSize = opts.tableSize ?? 90;
+  const chairCount = opts.chairCount ?? 8;
+  const chairOffset = opts.chairOffset ?? 22; // gap from table edge to chair center
+  const groupId = genId();
+  const items: LayoutItem[] = [];
+  let z = startZ;
+  items.push(
+    place("table-round", cx - tableSize / 2, cy - tableSize / 2, z++, {
+      width: tableSize,
+      height: tableSize,
+      label: opts.label ?? "Table",
+      groupId,
+    }),
+  );
+  const chairSize = 26;
+  const radius = tableSize / 2 + chairOffset;
+  for (let i = 0; i < chairCount; i++) {
+    const a = (i / chairCount) * Math.PI * 2 - Math.PI / 2;
+    items.push(
+      place(
+        "chair",
+        cx + Math.cos(a) * radius - chairSize / 2,
+        cy + Math.sin(a) * radius - chairSize / 2,
+        z++,
+        {
+          width: chairSize,
+          height: chairSize,
+          rotation: (a * 180) / Math.PI + 90,
+          groupId,
+          label: "",
+        },
+      ),
+    );
   }
-  return out;
+  return items;
+}
+
+/** Build a grouped desk + chair set. */
+function deskSet(cx: number, cy: number, startZ: number, opts: { label?: string } = {}): LayoutItem[] {
+  const groupId = genId();
+  const items: LayoutItem[] = [];
+  let z = startZ;
+  items.push(place("desk", cx - 40, cy - 25, z++, { width: 80, height: 50, groupId, label: opts.label ?? "" }));
+  items.push(place("chair", cx - 13, cy + 30, z++, { width: 26, height: 26, groupId, label: "" }));
+  return items;
 }
 
 export const TEMPLATES: TemplateDef[] = [
@@ -34,19 +80,24 @@ export const TEMPLATES: TemplateDef[] = [
     build: () => {
       const items: LayoutItem[] = [];
       let z = 1;
-      items.push(place("room-rect", 1700, 1500, z++, { width: 800, height: 600, label: "Reception Hall" }));
-      items.push(place("stage", 1900, 1550, z++));
-      items.push(place("dance-floor", 1900, 1750, z++, { width: 200, height: 200 }));
-      const tables = [
-        [1750, 2000], [2050, 2000], [1750, 2200], [2050, 2200],
-        [1600, 2100], [2200, 2100],
+      // Hall: 1000 wide × 800 tall, top-left at (1500, 1400).
+      items.push(place("room-rect", 1500, 1400, z++, { width: 1000, height: 800, label: "Reception Hall" }));
+      // Stage along the top inside the hall
+      items.push(place("stage", 1880, 1450, z++, { width: 240, height: 110, label: "Stage" }));
+      // Dance floor centered below the stage
+      items.push(place("dance-floor", 1850, 1600, z++, { width: 300, height: 220, label: "Dance Floor" }));
+      // Buffet along the right wall
+      items.push(place("buffet", 2300, 1880, z++, { width: 160, height: 50, label: "Buffet", rotation: 90 }));
+      // 6 round-table sets in two rows below the dance floor, well within hall
+      const tableCenters: [number, number][] = [
+        [1700, 1900], [2000, 1900], [2300, 1900],
+        [1700, 2080], [2000, 2080], [2300, 2080],
       ];
-      tables.forEach(([x, y], i) => {
-        items.push(place("table-round", x, y, z++, { width: 90, height: 90, label: `Table ${i + 1}` }));
-        items.push(...ring("chair", x + 45, y + 45, 70, 8, z));
-        z += 8;
+      tableCenters.forEach(([cx, cy], i) => {
+        const set = tableSet(cx, cy, z, { tableSize: 90, chairCount: 8, label: `Table ${i + 1}` });
+        items.push(...set);
+        z += set.length;
       });
-      items.push(place("buffet", 1700, 1900, z++, { label: "Buffet" }));
       return items;
     },
   },
@@ -58,12 +109,17 @@ export const TEMPLATES: TemplateDef[] = [
     build: () => {
       const items: LayoutItem[] = [];
       let z = 1;
-      items.push(place("room-rect", 1800, 1600, z++, { width: 600, height: 500, label: "Classroom" }));
-      items.push(place("desk", 2050, 1650, z++, { label: "Teacher" }));
+      items.push(place("room-rect", 1600, 1500, z++, { width: 800, height: 700, label: "Classroom" }));
+      // Teacher desk near the top-center
+      const teacher = deskSet(2000, 1600, z, { label: "Teacher" });
+      items.push(...teacher);
+      z += teacher.length;
+      // 4 rows × 5 cols student desk-sets
       for (let r = 0; r < 4; r++) {
         for (let c = 0; c < 5; c++) {
-          items.push(place("desk", 1850 + c * 100, 1800 + r * 90, z++, { width: 80, height: 50 }));
-          items.push(place("chair", 1860 + c * 100, 1860 + r * 90, z++, { width: 30, height: 25 }));
+          const set = deskSet(1720 + c * 130, 1780 + r * 110, z);
+          items.push(...set);
+          z += set.length;
         }
       }
       return items;
@@ -77,12 +133,16 @@ export const TEMPLATES: TemplateDef[] = [
     build: () => {
       const items: LayoutItem[] = [];
       let z = 1;
-      items.push(place("room-rect", 1800, 1700, z++, { width: 500, height: 350, label: "Boardroom" }));
-      items.push(place("table-rect", 1900, 1820, z++, { width: 320, height: 110, label: "Conference Table" }));
+      items.push(place("room-rect", 1700, 1650, z++, { width: 600, height: 400, label: "Boardroom" }));
+      // Group: conference table + surrounding chairs
+      const groupId = genId();
+      items.push(place("table-rect", 1830, 1790, z++, { width: 340, height: 120, label: "Conference Table", groupId }));
       for (let i = 0; i < 6; i++) {
-        items.push(place("chair", 1920 + i * 50, 1780, z++));
-        items.push(place("chair", 1920 + i * 50, 1940, z++));
+        items.push(place("chair", 1850 + i * 55, 1750, z++, { width: 28, height: 28, groupId, label: "" }));
+        items.push(place("chair", 1850 + i * 55, 1925, z++, { width: 28, height: 28, groupId, label: "" }));
       }
+      items.push(place("chair", 1790, 1840, z++, { width: 28, height: 28, groupId, label: "" }));
+      items.push(place("chair", 2185, 1840, z++, { width: 28, height: 28, groupId, label: "" }));
       return items;
     },
   },
@@ -94,10 +154,13 @@ export const TEMPLATES: TemplateDef[] = [
     build: () => {
       const items: LayoutItem[] = [];
       let z = 1;
-      items.push(place("room-rect", 1800, 1700, z++, { width: 600, height: 400, label: "Expo Floor" }));
-      const positions = [[1850, 1750], [2050, 1750], [2250, 1750], [1850, 1950], [2050, 1950], [2250, 1950]];
+      items.push(place("room-rect", 1600, 1550, z++, { width: 800, height: 600, label: "Expo Floor" }));
+      items.push(place("registration", 1640, 1590, z++, { label: "Registration" }));
+      const positions: [number, number][] = [
+        [1700, 1750], [1900, 1750], [2100, 1750], [2280, 1750],
+        [1700, 1950], [1900, 1950], [2100, 1950], [2280, 1950],
+      ];
       positions.forEach(([x, y], i) => items.push(place("booth", x, y, z++, { label: `Booth ${i + 1}` })));
-      items.push(place("registration", 1850, 1700, z++));
       return items;
     },
   },
@@ -199,11 +262,12 @@ export const TEMPLATES: TemplateDef[] = [
     build: () => {
       const items: LayoutItem[] = [];
       let z = 1;
-      items.push(place("room-rect", 1700, 1600, z++, { width: 700, height: 500, label: "Office" }));
+      items.push(place("room-rect", 1600, 1550, z++, { width: 800, height: 600, label: "Office" }));
       for (let r = 0; r < 3; r++) {
         for (let c = 0; c < 4; c++) {
-          items.push(place("desk", 1750 + c * 150, 1700 + r * 130, z++));
-          items.push(place("chair", 1790 + c * 150, 1770 + r * 130, z++));
+          const set = deskSet(1720 + c * 170, 1660 + r * 150, z, { label: "" });
+          items.push(...set);
+          z += set.length;
         }
       }
       return items;
@@ -217,11 +281,12 @@ export const TEMPLATES: TemplateDef[] = [
     build: () => {
       const items: LayoutItem[] = [];
       let z = 1;
-      items.push(place("room-rect", 1800, 1700, z++, { width: 450, height: 320, label: "Meeting Room" }));
-      items.push(place("table-rect", 1900, 1810, z++, { width: 260, height: 100 }));
+      items.push(place("room-rect", 1700, 1650, z++, { width: 550, height: 380, label: "Meeting Room" }));
+      const groupId = genId();
+      items.push(place("table-rect", 1830, 1790, z++, { width: 290, height: 110, label: "Table", groupId }));
       for (let i = 0; i < 4; i++) {
-        items.push(place("chair", 1920 + i * 60, 1780, z++));
-        items.push(place("chair", 1920 + i * 60, 1920, z++));
+        items.push(place("chair", 1860 + i * 65, 1750, z++, { width: 28, height: 28, groupId, label: "" }));
+        items.push(place("chair", 1860 + i * 65, 1915, z++, { width: 28, height: 28, groupId, label: "" }));
       }
       return items;
     },
