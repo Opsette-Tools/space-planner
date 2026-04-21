@@ -1,33 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { App as AntApp, Button, Drawer, Layout, Space, Typography } from "antd";
+import { AppstoreAddOutlined, CopyOutlined, DeleteOutlined, SlidersOutlined } from "@ant-design/icons";
 import { Canvas, type CanvasHandle } from "@/components/editor/Canvas";
 import { CanvasToolbar } from "@/components/editor/CanvasToolbar";
 import { EditorTopBar } from "@/components/editor/EditorTopBar";
 import { Inspector } from "@/components/editor/Inspector";
 import { ObjectLibrary } from "@/components/editor/ObjectLibrary";
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useHistory } from "@/hooks/useHistory";
 import { deleteLayout, genId, getLayout, saveLayout } from "@/lib/storage";
-import type { Layout, LayoutItem } from "@/lib/types";
+import type { Layout as LayoutData, LayoutItem } from "@/lib/types";
 import type { LibraryDef } from "@/lib/objectLibrary";
 import { makeItem } from "@/lib/objectLibrary";
 import {
@@ -36,7 +19,8 @@ import {
   importJSON,
   nodeToPng,
 } from "@/lib/exporters";
-import { Copy, Layers, Sliders, Trash2 } from "lucide-react";
+
+const { Text } = Typography;
 
 /** Compute the set of ids dragged/edited together when `id` is selected:
  *  the id itself plus all its groupmates. */
@@ -56,22 +40,28 @@ function expandToGroup(items: LayoutItem[], ids: string[]): string[] {
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const { message, modal } = AntApp.useApp();
   const isMobile = useIsMobile();
 
-  const history = useHistory<Layout | null>(null);
+  const history = useHistory<LayoutData | null>(null);
   const layout = history.state;
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [zoomPct, setZoomPct] = useState(40);
   const [libOpen, setLibOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
 
   const canvasRef = useRef<CanvasHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<number | null>(null);
   const loadingRef = useRef(true);
+  // When true, the next layout-change effect will NOT mark the layout dirty.
+  // Used by internal metadata flips (e.g., toggling auto-save) that we just persisted.
+  const skipDirtyRef = useRef(false);
+  // True when manual-save mode is on. Default: true (auto-save OFF).
+  const manualSave = layout?.manualSave ?? true;
 
   // Load
   useEffect(() => {
@@ -79,66 +69,99 @@ export default function EditorPage() {
     loadingRef.current = true;
     getLayout(id).then((l) => {
       if (!l) {
-        toast({ title: "Layout not found", variant: "destructive" });
+        message.error("Layout not found");
         navigate("/");
         return;
       }
       history.reset(l);
       setSelectedIds([]);
+      setDirty(false);
       setTimeout(() => {
         loadingRef.current = false;
       }, 200);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, navigate, toast]);
+  }, [id, navigate]);
 
-  // Debounced autosave
+  // Single save implementation — used by both auto-save (on timer) and manual Save button.
+  const persistLayout = useCallback(async () => {
+    if (!layout) return;
+    setSaving(true);
+    let thumbnail: string | undefined;
+    try {
+      const stage = canvasRef.current?.getStage();
+      if (stage) {
+        thumbnail = await nodeToPng(stage, {
+          width: 480,
+          height: 360,
+          pixelRatio: 480 / layout.canvas.width,
+        });
+      }
+    } catch {
+      /* ignore thumbnail errors */
+    }
+    await saveLayout({ ...layout, thumbnail, updatedAt: Date.now() });
+    setSaving(false);
+    setDirty(false);
+  }, [layout]);
+
+  // Mark dirty whenever layout changes post-load. Auto-save (when enabled) debounces.
   useEffect(() => {
     if (!layout || loadingRef.current) return;
-    setSaving(true);
+    if (skipDirtyRef.current) {
+      skipDirtyRef.current = false;
+      return;
+    }
+    setDirty(true);
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(async () => {
-      let thumbnail: string | undefined;
-      try {
-        const stage = canvasRef.current?.getStage();
-        if (stage) {
-          thumbnail = await nodeToPng(stage, {
-            width: 480,
-            height: 360,
-            pixelRatio: 480 / layout.canvas.width,
-          });
-        }
-      } catch {
-        /* ignore thumbnail errors */
-      }
-      await saveLayout({ ...layout, thumbnail, updatedAt: Date.now() });
-      setSaving(false);
-    }, 600);
+    if (!manualSave) {
+      // Auto-save mode: debounce 600ms
+      saveTimer.current = window.setTimeout(() => {
+        persistLayout();
+      }, 600);
+    }
     return () => {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout]);
+  }, [layout, manualSave]);
+
+  // Warn before unload when there are unsaved changes in manual-save mode
+  useEffect(() => {
+    if (!manualSave || !dirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [manualSave, dirty]);
+
+  const toggleManualSave = useCallback(async () => {
+    if (!layout) return;
+    const next = !manualSave;
+    const updated = { ...layout, manualSave: next, updatedAt: Date.now() };
+    await saveLayout(updated);
+    // Don't let this metadata flip trip the mark-dirty effect.
+    skipDirtyRef.current = true;
+    history.replace(() => updated);
+    setDirty(false);
+    message.success(next ? "Auto-save turned off" : "Auto-save turned on");
+  }, [layout, manualSave, history, message]);
 
   // ---- Selection helpers ----
-  const handleSelectionChange = useCallback(
-    (ids: string[]) => {
-      setSelectedIds(ids);
-    },
-    [],
-  );
+  const handleSelectionChange = useCallback((ids: string[]) => {
+    setSelectedIds(ids);
+  }, []);
 
   // ---- Mutators (history-aware) ----
-  /** Apply patch to a single item, push history entry. */
   const updateItem = useCallback(
     (itemId: string, patch: Partial<LayoutItem>) => {
       history.set((prev) =>
         prev
           ? {
               ...prev,
-              items: prev.items.map((i) =>
-                i.id === itemId ? { ...i, ...patch } : i,
-              ),
+              items: prev.items.map((i) => (i.id === itemId ? { ...i, ...patch } : i)),
             }
           : prev,
       );
@@ -146,17 +169,13 @@ export default function EditorPage() {
     [history],
   );
 
-  /** Patch many items in one history step (used during drag/resize/rotate via
-   *  coalesce). */
   const updateItems = useCallback(
     (patches: Record<string, Partial<LayoutItem>>) => {
       history.set((prev) =>
         prev
           ? {
               ...prev,
-              items: prev.items.map((i) =>
-                patches[i.id] ? { ...i, ...patches[i.id] } : i,
-              ),
+              items: prev.items.map((i) => (patches[i.id] ? { ...i, ...patches[i.id] } : i)),
             }
           : prev,
       );
@@ -171,9 +190,7 @@ export default function EditorPage() {
           ? {
               ...prev,
               items: prev.items.map((i) =>
-                i.id === itemId
-                  ? { ...i, style: { ...i.style, ...patch } }
-                  : i,
+                i.id === itemId ? { ...i, style: { ...i.style, ...patch } } : i,
               ),
             }
           : prev,
@@ -189,14 +206,12 @@ export default function EditorPage() {
       const cy = layout.canvas.height / 2;
       const maxZ = layout.items.reduce((m, i) => Math.max(m, i.zIndex), 0);
       const item = makeItem(def, cx, cy, maxZ + 1, genId);
-      history.set((prev) =>
-        prev ? { ...prev, items: [...prev.items, item] } : prev,
-      );
+      history.set((prev) => (prev ? { ...prev, items: [...prev.items, item] } : prev));
       setSelectedIds([item.id]);
       setLibOpen(false);
-      toast({ title: `Added ${def.label}` });
+      message.success(`Added ${def.label}`);
     },
-    [layout, history, toast],
+    [layout, history, message],
   );
 
   const duplicateSelection = useCallback(() => {
@@ -205,7 +220,6 @@ export default function EditorPage() {
     const toCopy = layout.items.filter((i) => expanded.has(i.id));
     if (toCopy.length === 0) return;
     const maxZ = layout.items.reduce((m, i) => Math.max(m, i.zIndex), 0);
-    // Remap groupIds so duplicates form their own group
     const groupRemap = new Map<string, string>();
     const newItems: LayoutItem[] = toCopy.map((it, idx) => {
       let newGroupId = it.groupId;
@@ -222,9 +236,7 @@ export default function EditorPage() {
         groupId: newGroupId,
       };
     });
-    history.set((prev) =>
-      prev ? { ...prev, items: [...prev.items, ...newItems] } : prev,
-    );
+    history.set((prev) => (prev ? { ...prev, items: [...prev.items, ...newItems] } : prev));
     setSelectedIds(newItems.map((i) => i.id));
   }, [layout, selectedIds, history]);
 
@@ -232,9 +244,7 @@ export default function EditorPage() {
     if (!layout || selectedIds.length === 0) return;
     const expanded = new Set(expandToGroup(layout.items, selectedIds));
     history.set((prev) =>
-      prev
-        ? { ...prev, items: prev.items.filter((i) => !expanded.has(i.id)) }
-        : prev,
+      prev ? { ...prev, items: prev.items.filter((i) => !expanded.has(i.id)) } : prev,
     );
     setSelectedIds([]);
   }, [layout, selectedIds, history]);
@@ -261,8 +271,14 @@ export default function EditorPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      // Undo / Redo
+      const isTyping = tag === "INPUT" || tag === "TEXTAREA";
+      // Cmd/Ctrl+S — save (works from anywhere, even while typing)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        persistLayout();
+        return;
+      }
+      if (isTyping) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) history.redo();
@@ -274,19 +290,12 @@ export default function EditorPage() {
         history.redo();
         return;
       }
-      if (
-        (e.key === "Delete" || e.key === "Backspace") &&
-        selectedIds.length > 0
-      ) {
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.length > 0) {
         e.preventDefault();
         deleteSelection();
         return;
       }
-      if (
-        (e.metaKey || e.ctrlKey) &&
-        e.key.toLowerCase() === "d" &&
-        selectedIds.length > 0
-      ) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d" && selectedIds.length > 0) {
         e.preventDefault();
         duplicateSelection();
         return;
@@ -295,7 +304,7 @@ export default function EditorPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedIds, history, deleteSelection, duplicateSelection]);
+  }, [selectedIds, history, deleteSelection, duplicateSelection, persistLayout]);
 
   const handleExportJSON = () => {
     if (layout) downloadJSON(layout);
@@ -311,9 +320,9 @@ export default function EditorPage() {
         pixelRatio: 1,
       });
       downloadDataUrl(dataUrl, `${layout.name}.png`);
-      toast({ title: "PNG exported" });
+      message.success("PNG exported");
     } catch {
-      toast({ title: "PNG export failed", variant: "destructive" });
+      message.error("PNG export failed");
     }
   };
 
@@ -325,27 +334,23 @@ export default function EditorPage() {
     if (!file) return;
     try {
       const imported = await importJSON(file);
-      const fresh: Layout = {
+      const fresh: LayoutData = {
         ...imported,
         id: genId(),
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
       await saveLayout(fresh);
-      toast({ title: "Imported", description: imported.name });
+      message.success(`Imported "${imported.name}"`);
       navigate(`/editor/${fresh.id}`);
     } catch {
-      toast({
-        title: "Import failed",
-        description: "Invalid layout file",
-        variant: "destructive",
-      });
+      message.error("Invalid layout file");
     }
   };
 
   const handleDuplicateLayout = async () => {
     if (!layout) return;
-    const copy: Layout = {
+    const copy: LayoutData = {
       ...layout,
       id: genId(),
       name: `${layout.name} (copy)`,
@@ -356,10 +361,18 @@ export default function EditorPage() {
     navigate(`/editor/${copy.id}`);
   };
 
-  const handleDeleteLayout = async () => {
+  const confirmDeleteLayout = () => {
     if (!layout) return;
-    await deleteLayout(layout.id);
-    navigate("/");
+    modal.confirm({
+      title: "Delete this layout?",
+      content: `"${layout.name}" will be removed permanently. This cannot be undone.`,
+      okText: "Delete",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await deleteLayout(layout.id);
+        navigate("/");
+      },
+    });
   };
 
   const selectedItem = useMemo(
@@ -370,9 +383,22 @@ export default function EditorPage() {
     [layout, selectedIds],
   );
 
+  // Close the mobile inspector drawer when selection clears
+  useEffect(() => {
+    if (!selectedItem && inspectorOpen) setInspectorOpen(false);
+  }, [selectedItem, inspectorOpen]);
+
   if (!layout) {
     return (
-      <div className="flex items-center justify-center h-screen text-muted-foreground">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100vh",
+          color: "#64748b",
+        }}
+      >
         Loading…
       </div>
     );
@@ -392,30 +418,56 @@ export default function EditorPage() {
 
   const multiSelectBar =
     selectedIds.length > 1 ? (
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/40">
-        <span className="text-sm font-medium">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "10px 16px",
+          borderBottom: "1px solid #eaedf1",
+          background: "#f7f8fa",
+        }}
+      >
+        <Text strong style={{ fontSize: 13 }}>
           {selectedIds.length} items selected
-        </span>
-        <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={duplicateSelection}>
-            <Copy className="w-4 h-4" /> Duplicate
+        </Text>
+        <div style={{ flex: 1 }} />
+        <Space size={8}>
+          <Button size="small" icon={<CopyOutlined />} onClick={duplicateSelection}>
+            Duplicate
           </Button>
-          <Button size="sm" variant="destructive" onClick={deleteSelection}>
-            <Trash2 className="w-4 h-4" /> Delete
+          <Button size="small" danger icon={<DeleteOutlined />} onClick={deleteSelection}>
+            Delete
           </Button>
-        </div>
+        </Space>
       </div>
     ) : null;
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <Layout style={{ height: "100vh", background: "#ffffff" }}>
       <EditorTopBar
         name={layout.name}
         onNameChange={(n) =>
           history.replace((prev) => (prev ? { ...prev, name: n } : prev))
         }
-        onBack={() => navigate("/")}
+        onBack={() => {
+          if (manualSave && dirty) {
+            modal.confirm({
+              title: "Leave without saving?",
+              content: "Unsaved changes will be lost.",
+              okText: "Discard",
+              okButtonProps: { danger: true },
+              onOk: () => navigate("/"),
+            });
+          } else {
+            navigate("/");
+          }
+        }}
         saving={saving}
+        dirty={dirty}
+        manualSave={manualSave}
+        onSave={persistLayout}
+        onToggleManualSave={toggleManualSave}
         zoomPct={zoomPct}
         canUndo={history.canUndo}
         canRedo={history.canRedo}
@@ -425,32 +477,51 @@ export default function EditorPage() {
         onExportPNG={handleExportPNG}
         onImportJSON={handleImportClick}
         onDuplicate={handleDuplicateLayout}
-        onDelete={() => setConfirmDelete(true)}
+        onDelete={confirmDeleteLayout}
       />
 
       <input
         ref={fileInputRef}
         type="file"
         accept="application/json,.json"
-        className="hidden"
+        style={{ display: "none" }}
         onChange={handleImportFile}
       />
 
-      <div className="flex-1 flex min-h-0">
-        {/* Desktop library */}
+      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         {!isMobile && (
-          <aside className="w-64 shrink-0 border-r border-border bg-card flex flex-col">
-            <div className="px-3 py-2.5 border-b border-border text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <aside
+            style={{
+              width: 252,
+              flexShrink: 0,
+              borderRight: "1px solid #eaedf1",
+              background: "#fafbfc",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div
+              style={{
+                padding: "8px 12px",
+                borderBottom: "1px solid #eaedf1",
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: 0.6,
+                textTransform: "uppercase",
+                color: "#64748b",
+              }}
+            >
               Objects
             </div>
-            <ObjectLibrary onPick={addItemFromDef} />
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <ObjectLibrary onPick={addItemFromDef} />
+            </div>
           </aside>
         )}
 
-        {/* Canvas + toolbars */}
-        <div className="flex-1 relative min-w-0 flex flex-col">
+        <div style={{ flex: 1, position: "relative", minWidth: 0, display: "flex", flexDirection: "column" }}>
           {multiSelectBar}
-          <div className="flex-1 relative min-h-0">
+          <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
             <Canvas
               ref={canvasRef}
               layout={layout}
@@ -467,25 +538,12 @@ export default function EditorPage() {
               gridSize={layout.canvas.gridSize}
               onToggleGrid={() =>
                 history.set((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        canvas: {
-                          ...prev.canvas,
-                          showGrid: !prev.canvas.showGrid,
-                        },
-                      }
-                    : prev,
+                  prev ? { ...prev, canvas: { ...prev.canvas, showGrid: !prev.canvas.showGrid } } : prev,
                 )
               }
               onToggleSnap={() =>
                 history.set((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        canvas: { ...prev.canvas, snap: !prev.canvas.snap },
-                      }
-                    : prev,
+                  prev ? { ...prev, canvas: { ...prev.canvas, snap: !prev.canvas.snap } } : prev,
                 )
               }
               onCycleGridSize={() =>
@@ -494,10 +552,7 @@ export default function EditorPage() {
                   const order = [8, 16, 32];
                   const idx = order.indexOf(prev.canvas.gridSize);
                   const next = order[(idx + 1) % order.length] ?? 8;
-                  return {
-                    ...prev,
-                    canvas: { ...prev.canvas, gridSize: next },
-                  };
+                  return { ...prev, canvas: { ...prev.canvas, gridSize: next } };
                 })
               }
               onZoomIn={() => canvasRef.current?.zoomIn()}
@@ -506,58 +561,63 @@ export default function EditorPage() {
               onFit={() => canvasRef.current?.fitToContent()}
             />
 
-            {/* Mobile floating action bar */}
             {isMobile && (
-              <div className="absolute top-3 left-3 right-3 flex gap-2 z-10">
-                <Sheet open={libOpen} onOpenChange={setLibOpen}>
-                  <SheetTrigger asChild>
-                    <Button size="sm" className="rounded-full shadow-md">
-                      <Layers className="w-4 h-4" /> Add
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent
-                    side="bottom"
-                    className="h-[70vh] flex flex-col p-0"
-                  >
-                    <SheetHeader className="px-4 pt-4 pb-2">
-                      <SheetTitle>Object Library</SheetTitle>
-                    </SheetHeader>
-                    <div className="flex-1 min-h-0">
-                      <ObjectLibrary onPick={addItemFromDef} />
-                    </div>
-                  </SheetContent>
-                </Sheet>
+              <div
+                style={{
+                  position: "absolute",
+                  top: 12,
+                  left: 12,
+                  right: 12,
+                  display: "flex",
+                  gap: 8,
+                  zIndex: 10,
+                }}
+              >
+                <Button
+                  type="primary"
+                  shape="round"
+                  icon={<AppstoreAddOutlined />}
+                  onClick={() => setLibOpen(true)}
+                  style={{ boxShadow: "0 2px 8px rgba(15, 23, 42, 0.18)" }}
+                >
+                  Add
+                </Button>
                 {selectedItem && (
-                  <Sheet>
-                    <SheetTrigger asChild>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="rounded-full shadow-md ml-auto"
-                      >
-                        <Sliders className="w-4 h-4" /> Edit
-                      </Button>
-                    </SheetTrigger>
-                    <SheetContent
-                      side="bottom"
-                      className="h-[80vh] overflow-y-auto p-0"
-                    >
-                      <SheetHeader className="px-4 pt-4 pb-1">
-                        <SheetTitle>Inspector</SheetTitle>
-                      </SheetHeader>
-                      {inspector}
-                    </SheetContent>
-                  </Sheet>
+                  <Button
+                    shape="round"
+                    icon={<SlidersOutlined />}
+                    onClick={() => setInspectorOpen(true)}
+                    style={{ marginLeft: "auto", boxShadow: "0 2px 8px rgba(15, 23, 42, 0.18)" }}
+                  >
+                    Edit
+                  </Button>
                 )}
               </div>
             )}
           </div>
         </div>
 
-        {/* Desktop inspector */}
         {!isMobile && selectedItem && (
-          <aside className="w-72 shrink-0 border-l border-border bg-card overflow-y-auto">
-            <div className="px-3 py-2.5 border-b border-border text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <aside
+            style={{
+              width: 288,
+              flexShrink: 0,
+              borderLeft: "1px solid #eaedf1",
+              background: "#fafbfc",
+              overflowY: "auto",
+            }}
+          >
+            <div
+              style={{
+                padding: "8px 12px",
+                borderBottom: "1px solid #eaedf1",
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: 0.6,
+                textTransform: "uppercase",
+                color: "#64748b",
+              }}
+            >
               Inspector
             </div>
             {inspector}
@@ -565,25 +625,31 @@ export default function EditorPage() {
         )}
       </div>
 
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this layout?</AlertDialogTitle>
-            <AlertDialogDescription>
-              "{layout.name}" will be removed permanently. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteLayout}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+      {isMobile && (
+        <Drawer
+          title="Object library"
+          placement="bottom"
+          open={libOpen}
+          onClose={() => setLibOpen(false)}
+          height="70vh"
+          styles={{ body: { padding: 0 } }}
+        >
+          <ObjectLibrary onPick={addItemFromDef} />
+        </Drawer>
+      )}
+
+      {isMobile && (
+        <Drawer
+          title="Inspector"
+          placement="bottom"
+          open={inspectorOpen && !!selectedItem}
+          onClose={() => setInspectorOpen(false)}
+          height="80vh"
+          styles={{ body: { padding: 0 } }}
+        >
+          {inspector}
+        </Drawer>
+      )}
+    </Layout>
   );
 }

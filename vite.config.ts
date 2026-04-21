@@ -1,11 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(() => ({
   server: {
     host: "::",
     port: 8080,
@@ -17,17 +16,16 @@ export default defineConfig(({ mode }) => ({
   base: process.env.VITE_BASE || "/",
   plugins: [
     react(),
-    mode === "development" && componentTagger(),
     VitePWA({
       registerType: "autoUpdate",
       devOptions: { enabled: false },
       includeAssets: ["favicon.ico", "icon-192.png", "icon-512.png"],
       manifest: {
-        name: "Planr — Spatial Layout Planner",
-        short_name: "Planr",
-        description: "Mobile-first spatial layout planner for floor plans, events, gardens, and seating.",
-        theme_color: "#f7f5f0",
-        background_color: "#f7f5f0",
+        name: "Space Planner",
+        short_name: "Space Planner",
+        description: "Spatial layout planner for floor plans, events, gardens, and seating.",
+        theme_color: "#243958",
+        background_color: "#f7f7f8",
         display: "standalone",
         start_url: ".",
         scope: ".",
@@ -42,7 +40,7 @@ export default defineConfig(({ mode }) => ({
         globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
       },
     }),
-  ].filter(Boolean),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

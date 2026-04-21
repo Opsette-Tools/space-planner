@@ -1,6 +1,13 @@
-import { Button } from "@/components/ui/button";
-import { Toggle } from "@/components/ui/toggle";
-import { Grid3x3, Magnet, Maximize2, Minus, Plus, Ruler, RotateCcw } from "lucide-react";
+import { Button, Tooltip, Divider } from "antd";
+import {
+  AppstoreOutlined,
+  BorderOutlined,
+  ColumnHeightOutlined,
+  ExpandOutlined,
+  MinusOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+} from "@ant-design/icons";
 
 interface Props {
   showGrid: boolean;
@@ -18,37 +25,66 @@ interface Props {
 export function CanvasToolbar(p: Props) {
   const sizeLabel = p.gridSize <= 8 ? "S" : p.gridSize <= 16 ? "M" : "L";
   return (
-    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-card/95 backdrop-blur border border-border rounded-full shadow-md px-1.5 py-1 z-10">
-      <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={p.onZoomOut} aria-label="Zoom out">
-        <Minus className="w-4 h-4" />
-      </Button>
-      <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={p.onZoomIn} aria-label="Zoom in">
-        <Plus className="w-4 h-4" />
-      </Button>
-      <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={p.onReset} aria-label="Reset view">
-        <RotateCcw className="w-4 h-4" />
-      </Button>
-      <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={p.onFit} aria-label="Fit to content">
-        <Maximize2 className="w-4 h-4" />
-      </Button>
-      <div className="w-px h-5 bg-border mx-0.5" />
-      <Toggle pressed={p.showGrid} onPressedChange={p.onToggleGrid} className="h-9 w-9 rounded-full data-[state=on]:bg-accent data-[state=on]:text-accent-foreground" aria-label="Toggle grid">
-        <Grid3x3 className="w-4 h-4" />
-      </Toggle>
-      <Toggle pressed={p.snap} onPressedChange={p.onToggleSnap} className="h-9 w-9 rounded-full data-[state=on]:bg-accent data-[state=on]:text-accent-foreground" aria-label="Toggle snap">
-        <Magnet className="w-4 h-4" />
-      </Toggle>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-9 rounded-full px-2 gap-1 text-xs font-medium"
-        onClick={p.onCycleGridSize}
-        aria-label={`Grid size: ${sizeLabel}`}
-        title="Cycle grid size (S/M/L)"
-      >
-        <Ruler className="w-3.5 h-3.5" />
-        {sizeLabel}
-      </Button>
+    <div
+      style={{
+        position: "absolute",
+        bottom: 14,
+        left: "50%",
+        transform: "translateX(-50%)",
+        display: "flex",
+        alignItems: "center",
+        gap: 2,
+        padding: 4,
+        background: "rgba(255,255,255,0.96)",
+        backdropFilter: "blur(6px)",
+        border: "1px solid #eaedf1",
+        borderRadius: 999,
+        boxShadow: "0 1px 8px rgba(15, 23, 42, 0.08)",
+        zIndex: 10,
+      }}
+    >
+      <Tooltip title="Zoom out">
+        <Button type="text" shape="circle" size="small" icon={<MinusOutlined />} onClick={p.onZoomOut} />
+      </Tooltip>
+      <Tooltip title="Zoom in">
+        <Button type="text" shape="circle" size="small" icon={<PlusOutlined />} onClick={p.onZoomIn} />
+      </Tooltip>
+      <Tooltip title="Reset view">
+        <Button type="text" shape="circle" size="small" icon={<ReloadOutlined />} onClick={p.onReset} />
+      </Tooltip>
+      <Tooltip title="Fit to content">
+        <Button type="text" shape="circle" size="small" icon={<ExpandOutlined />} onClick={p.onFit} />
+      </Tooltip>
+      <Divider type="vertical" style={{ margin: "0 4px", height: 18 }} />
+      <Tooltip title={p.showGrid ? "Hide grid" : "Show grid"}>
+        <Button
+          type={p.showGrid ? "primary" : "text"}
+          shape="circle"
+          size="small"
+          icon={<AppstoreOutlined />}
+          onClick={p.onToggleGrid}
+        />
+      </Tooltip>
+      <Tooltip title={p.snap ? "Disable snap" : "Enable snap"}>
+        <Button
+          type={p.snap ? "primary" : "text"}
+          shape="circle"
+          size="small"
+          icon={<BorderOutlined />}
+          onClick={p.onToggleSnap}
+        />
+      </Tooltip>
+      <Tooltip title={`Grid size: ${sizeLabel} (click to cycle)`}>
+        <Button
+          type="text"
+          size="small"
+          icon={<ColumnHeightOutlined />}
+          onClick={p.onCycleGridSize}
+          style={{ borderRadius: 999, padding: "0 10px", fontSize: 11, fontWeight: 600 }}
+        >
+          {sizeLabel}
+        </Button>
+      </Tooltip>
     </div>
   );
 }

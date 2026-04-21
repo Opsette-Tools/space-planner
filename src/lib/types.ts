@@ -53,6 +53,9 @@ export interface Layout {
   canvas: CanvasSettings;
   items: LayoutItem[];
   thumbnail?: string;
+  /** When true (default), the editor does NOT autosave. The user clicks Save
+   *  (or Cmd/Ctrl+S) to persist. When false, changes autosave after a debounce. */
+  manualSave?: boolean;
 }
 
 export const LAYOUT_TYPE_LABEL: Record<LayoutType, string> = {
