@@ -5,10 +5,12 @@ import {
   App as AntApp,
   Button,
   Card,
+  Collapse,
   Dropdown,
   Empty,
   Layout,
   List,
+  Modal,
   Segmented,
   Space,
   Tag,
@@ -37,9 +39,10 @@ import {
 } from "@/lib/templates";
 import { LAYOUT_TYPE_LABEL, type Layout as LayoutData, type LayoutType } from "@/lib/types";
 import { TemplatePreview } from "@/components/TemplatePreview";
+import { Logo } from "@/components/Logo";
 
-const { Header, Content } = Layout;
-const { Title, Text } = Typography;
+const { Header, Content, Footer } = Layout;
+const { Title, Text, Paragraph, Link } = Typography;
 
 const TYPE_OPTIONS: LayoutType[] = ["floor", "event", "garden", "seating", "general"];
 const LIST_THRESHOLD = 6;
@@ -54,6 +57,8 @@ export default function Index() {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [viewModeUserSet, setViewModeUserSet] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<TemplateDef | null>(null);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refresh = async () => {
@@ -133,11 +138,20 @@ export default function Index() {
   }, []);
 
   const newMenu: MenuProps = {
-    items: TYPE_OPTIONS.map((t) => ({
-      key: t,
-      label: `New ${LAYOUT_TYPE_LABEL[t].toLowerCase()}`,
-      onClick: () => createUntitled(t),
-    })),
+    items: [
+      ...TYPE_OPTIONS.map((t) => ({
+        key: t,
+        label: `New ${LAYOUT_TYPE_LABEL[t].toLowerCase()}`,
+        onClick: () => createUntitled(t),
+      })),
+      { type: "divider" as const },
+      {
+        key: "import",
+        icon: <UploadOutlined />,
+        label: "Import JSON",
+        onClick: () => fileRef.current?.click(),
+      },
+    ],
   };
 
   const itemMenu = (l: LayoutData): MenuProps => ({
@@ -184,57 +198,54 @@ export default function Index() {
   });
 
   return (
-    <Layout style={{ minHeight: "100vh", background: "#f5f6f8" }}>
+    <Layout style={{ minHeight: "100vh", background: "#f7f8fa" }}>
       <Header
         style={{
           position: "sticky",
           top: 0,
           zIndex: 10,
-          height: 56,
-          padding: "0 20px",
+          height: 72,
+          padding: "0 24px",
           background: "#ffffff",
           borderBottom: "1px solid #eaedf1",
-          display: "flex",
+          display: "grid",
+          gridTemplateColumns: "1fr auto 1fr",
           alignItems: "center",
           gap: 12,
         }}
       >
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 6,
-            background: "#243958",
-            color: "#fff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 14,
-          }}
-        >
-          <AppstoreOutlined />
+        <div />
+        <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "center" }}>
+          <Logo size={40} color="#243958" />
+          <Title
+            level={3}
+            style={{
+              margin: 0,
+              fontSize: 22,
+              fontWeight: 600,
+              lineHeight: 1.1,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Space Planner
+          </Title>
         </div>
-        <Title level={5} style={{ margin: 0, fontSize: 16, fontWeight: 600, lineHeight: 1 }}>
-          Space Planner
-        </Title>
-        <div style={{ flex: 1 }} />
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".json,application/json"
-          style={{ display: "none" }}
-          onChange={handleImport}
-        />
-        <Button icon={<UploadOutlined />} onClick={() => fileRef.current?.click()}>
-          Import
-        </Button>
-        <Dropdown.Button
-          type="primary"
-          menu={newMenu}
-          onClick={() => createUntitled("floor")}
-        >
-          <PlusOutlined /> New
-        </Dropdown.Button>
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".json,application/json"
+            style={{ display: "none" }}
+            onChange={handleImport}
+          />
+          <Dropdown.Button
+            type="primary"
+            menu={newMenu}
+            onClick={() => createUntitled("floor")}
+          >
+            <PlusOutlined /> New
+          </Dropdown.Button>
+        </div>
       </Header>
 
       <Content style={{ maxWidth: 1100, width: "100%", margin: "0 auto", padding: "24px 20px 48px" }}>
@@ -301,6 +312,7 @@ export default function Index() {
                   hoverable
                   onClick={() => navigate(`/editor/${l.id}`)}
                   styles={{ body: { padding: 10 } }}
+                  style={{ boxShadow: "0 1px 3px rgba(15,23,42,0.06)" }}
                   cover={
                     <div
                       style={{
@@ -351,7 +363,10 @@ export default function Index() {
               ))}
             </div>
           ) : (
-            <Card styles={{ body: { padding: 0 } }}>
+            <Card
+              styles={{ body: { padding: 0 } }}
+              style={{ boxShadow: "0 1px 3px rgba(15,23,42,0.06)" }}
+            >
               <List
                 dataSource={layouts}
                 renderItem={(l) => (
@@ -432,43 +447,91 @@ export default function Index() {
           >
             Start from a template
           </Text>
-          {(["Event", "Landscape", "Interior"] as const).map((g) => (
-            <div key={g} style={{ marginBottom: 18 }}>
-              <Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>
-                {g}
-              </Text>
-              <div
-                style={{
-                  marginTop: 6,
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
-                  gap: 10,
-                }}
-              >
-                {grouped[g].map((t) => (
-                  <Card
-                    key={t.id}
-                    hoverable
-                    onClick={() => setPreviewTemplate(t)}
-                    styles={{ body: { padding: "10px 12px" } }}
-                  >
-                    <Text strong style={{ display: "block", fontSize: 13 }}>
-                      {t.name}
-                    </Text>
-                    <Text type="secondary" style={{ fontSize: 11 }}>
-                      {LAYOUT_TYPE_LABEL[t.type]}
-                    </Text>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          ))}
+          <Collapse
+            defaultActiveKey={["Event", "Landscape", "Interior"]}
+            bordered={false}
+            style={{ background: "transparent" }}
+            items={(["Event", "Landscape", "Interior"] as const).map((g) => ({
+              key: g,
+              label: (
+                <Space size={8} align="baseline">
+                  <Text strong style={{ fontSize: 13 }}>
+                    {g}
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    {grouped[g].length}
+                  </Text>
+                </Space>
+              ),
+              style: {
+                background: "#ffffff",
+                marginBottom: 8,
+                border: "1px solid #eaedf1",
+                borderRadius: 8,
+                boxShadow: "0 1px 3px rgba(15,23,42,0.04)",
+              },
+              children: (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                    gap: 10,
+                  }}
+                >
+                  {grouped[g].map((t) => (
+                    <Card
+                      key={t.id}
+                      hoverable
+                      onClick={() => setPreviewTemplate(t)}
+                      styles={{ body: { padding: "10px 12px" } }}
+                      style={{ boxShadow: "0 1px 3px rgba(15,23,42,0.06)" }}
+                    >
+                      <Text strong style={{ display: "block", fontSize: 13 }}>
+                        {t.name}
+                      </Text>
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        {LAYOUT_TYPE_LABEL[t.type]}
+                      </Text>
+                    </Card>
+                  ))}
+                </div>
+              ),
+            }))}
+          />
         </section>
 
-        <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 12, paddingTop: 16 }}>
-          Layouts are saved locally on this device.
-        </div>
       </Content>
+
+      <Footer
+        style={{
+          textAlign: "center",
+          background: "transparent",
+          padding: "16px 24px 24px",
+          fontSize: 12,
+        }}
+      >
+        <Space size={8} wrap style={{ justifyContent: "center" }}>
+          <Link onClick={() => setAboutOpen(true)} style={{ fontSize: 12 }}>
+            About
+          </Link>
+          <Text type="secondary">·</Text>
+          <Link onClick={() => setPrivacyOpen(true)} style={{ fontSize: 12 }}>
+            Privacy
+          </Link>
+          <Text type="secondary">·</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            By{" "}
+            <Link
+              href="https://opsette.io"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 12 }}
+            >
+              Opsette
+            </Link>
+          </Text>
+        </Space>
+      </Footer>
 
       <TemplatePreview
         templates={TEMPLATES}
@@ -479,6 +542,86 @@ export default function Index() {
           handleUseTemplate(t);
         }}
       />
+
+      <Modal
+        title="About Space Planner"
+        open={aboutOpen}
+        onCancel={() => setAboutOpen(false)}
+        footer={null}
+        width={520}
+      >
+        <Paragraph type="secondary" style={{ marginBottom: 12 }}>
+          A business tool from Opsette Marketplace.
+        </Paragraph>
+        <Paragraph>
+          Space Planner helps you sketch floor plans, event layouts, garden beds, and seating
+          charts. Drag furniture and event objects onto a canvas, group related items, and
+          start from a template when you don't want to begin from scratch.
+        </Paragraph>
+        <Title level={5} style={{ marginTop: 16 }}>
+          How it works
+        </Title>
+        <Paragraph>
+          <ol style={{ paddingLeft: 20, margin: 0 }}>
+            <li>Start a blank layout or pick a template (event, landscape, or interior).</li>
+            <li>Drag objects from the left library onto the canvas.</li>
+            <li>Click an object to edit its size, color, rotation, and notes on the right.</li>
+            <li>Group related items so they move together; ungroup when you need to edit one.</li>
+            <li>Save when you're happy — export as PNG or JSON to share.</li>
+          </ol>
+        </Paragraph>
+        <Paragraph type="secondary" italic style={{ fontSize: 12, marginTop: 16 }}>
+          Everything runs in your browser. Your layouts are saved locally on this device —
+          nothing is sent to any server.
+        </Paragraph>
+        <Paragraph style={{ fontSize: 12, marginTop: 8 }}>
+          Find more tools at{" "}
+          <Link href="https://opsette.io" target="_blank" rel="noopener noreferrer">
+            opsette.io
+          </Link>
+          .
+        </Paragraph>
+      </Modal>
+
+      <Modal
+        title="Privacy Policy"
+        open={privacyOpen}
+        onCancel={() => setPrivacyOpen(false)}
+        footer={null}
+        width={520}
+      >
+        <Paragraph strong>Space Planner respects your privacy.</Paragraph>
+
+        <Title level={5}>No data collection</Title>
+        <Paragraph>
+          Space Planner runs entirely in your browser. We do not collect, store, or transmit
+          any personal information. All interactions happen locally on your device.
+        </Paragraph>
+
+        <Title level={5}>No cookies or tracking</Title>
+        <Paragraph>
+          We do not use cookies, analytics, or any third-party tracking services.
+        </Paragraph>
+
+        <Title level={5}>No account required</Title>
+        <Paragraph>
+          There is no sign-up, no login, and no data stored on any server. Your layouts are
+          saved locally in your browser (IndexedDB) and are never shared with anyone.
+        </Paragraph>
+
+        <Title level={5}>Contact</Title>
+        <Paragraph>
+          If you have questions about this policy, reach us through{" "}
+          <Link href="https://opsette.io" target="_blank" rel="noopener noreferrer">
+            opsette.io
+          </Link>
+          .
+        </Paragraph>
+
+        <Paragraph type="secondary" style={{ fontSize: 12, marginTop: 16 }}>
+          Last updated: April 2026
+        </Paragraph>
+      </Modal>
     </Layout>
   );
 }

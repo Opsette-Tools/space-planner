@@ -33,3 +33,18 @@ export async function deleteLayout(id: string): Promise<void> {
 export function genId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
+
+const PREFS_KEY = "prefs:v1";
+
+interface Prefs {
+  libraryWidth?: number;
+}
+
+export async function getPrefs(): Promise<Prefs> {
+  return (await get<Prefs>(PREFS_KEY)) ?? {};
+}
+
+export async function setPref<K extends keyof Prefs>(key: K, value: Prefs[K]): Promise<void> {
+  const prev = await getPrefs();
+  await set(PREFS_KEY, { ...prev, [key]: value });
+}

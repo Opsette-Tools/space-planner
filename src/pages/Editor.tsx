@@ -16,7 +16,7 @@ import { Inspector } from "@/components/editor/Inspector";
 import { ObjectLibrary } from "@/components/editor/ObjectLibrary";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useHistory } from "@/hooks/useHistory";
-import { deleteLayout, genId, getLayout, saveLayout } from "@/lib/storage";
+import { deleteLayout, genId, getLayout, getPrefs, saveLayout, setPref } from "@/lib/storage";
 import type { Layout as LayoutData, LayoutItem } from "@/lib/types";
 import type { LibraryDef } from "@/lib/objectLibrary";
 import { makeItem } from "@/lib/objectLibrary";
@@ -64,6 +64,12 @@ export default function EditorPage() {
   const [zoomPct, setZoomPct] = useState(40);
   const [libOpen, setLibOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  // Library sidebar width — draggable, persisted via IndexedDB prefs.
+  const LIB_MIN = 200;
+  const LIB_MAX = 480;
+  const LIB_DEFAULT = 252;
+  const [libWidth, setLibWidth] = useState(LIB_DEFAULT);
+  const libWidthLoaded = useRef(false);
 
   const canvasRef = useRef<CanvasHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -499,6 +505,39 @@ export default function EditorPage() {
     if (!selectedItem && inspectorOpen) setInspectorOpen(false);
   }, [selectedItem, inspectorOpen]);
 
+  // Load the persisted sidebar width once on mount.
+  useEffect(() => {
+    getPrefs().then((p) => {
+      if (typeof p.libraryWidth === "number") {
+        const clamped = Math.max(LIB_MIN, Math.min(LIB_MAX, p.libraryWidth));
+        setLibWidth(clamped);
+      }
+      libWidthLoaded.current = true;
+    });
+  }, []);
+
+  // Drag handler for the divider between sidebar and canvas. Tracks pointer
+  // horizontally and clamps to [LIB_MIN, LIB_MAX]. Persists on pointer-up.
+  const startLibResize = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = libWidth;
+    const onMove = (ev: PointerEvent) => {
+      const next = Math.max(LIB_MIN, Math.min(LIB_MAX, startW + (ev.clientX - startX)));
+      setLibWidth(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setLibWidth((w) => {
+        if (libWidthLoaded.current) setPref("libraryWidth", w);
+        return w;
+      });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, [libWidth]);
+
   if (!layout) {
     return (
       <div
@@ -630,33 +669,50 @@ export default function EditorPage() {
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         {!isMobile && (
-          <aside
-            style={{
-              width: 252,
-              flexShrink: 0,
-              borderRight: "1px solid #eaedf1",
-              background: "#fafbfc",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <div
+          <>
+            <aside
               style={{
-                padding: "8px 12px",
-                borderBottom: "1px solid #eaedf1",
-                fontSize: 11,
-                fontWeight: 600,
-                letterSpacing: 0.6,
-                textTransform: "uppercase",
-                color: "#64748b",
+                width: libWidth,
+                flexShrink: 0,
+                borderRight: "1px solid #eaedf1",
+                background: "#fafbfc",
+                display: "flex",
+                flexDirection: "column",
               }}
             >
-              Objects
-            </div>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              <ObjectLibrary onPick={addItemFromDef} />
-            </div>
-          </aside>
+              <div
+                style={{
+                  padding: "8px 12px",
+                  borderBottom: "1px solid #eaedf1",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                  color: "#64748b",
+                }}
+              >
+                Objects
+              </div>
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <ObjectLibrary onPick={addItemFromDef} />
+              </div>
+            </aside>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize object library"
+              onPointerDown={startLibResize}
+              style={{
+                width: 6,
+                marginLeft: -3,
+                marginRight: -3,
+                cursor: "col-resize",
+                flexShrink: 0,
+                zIndex: 5,
+                background: "transparent",
+              }}
+            />
+          </>
         )}
 
         <div style={{ flex: 1, position: "relative", minWidth: 0, display: "flex", flexDirection: "column" }}>
