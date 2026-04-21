@@ -26,6 +26,8 @@ interface Props {
   saving: boolean;
   dirty: boolean;
   manualSave: boolean;
+  /** True until the layout has been persisted to storage for the first time. */
+  unsaved?: boolean;
   onSave: () => void;
   onToggleManualSave: () => void;
   zoomPct: number;
@@ -47,6 +49,7 @@ export function EditorTopBar({
   saving,
   dirty,
   manualSave,
+  unsaved = false,
   onSave,
   onToggleManualSave,
   zoomPct,
@@ -63,34 +66,66 @@ export function EditorTopBar({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
 
+  const savedOnlyLabel = "Save this layout first";
+
   const menu: MenuProps = {
     items: [
       {
         key: "auto-save",
         icon: <SyncOutlined />,
         label: manualSave ? "Turn on auto-save" : "Turn off auto-save",
+        disabled: unsaved,
         onClick: onToggleManualSave,
       },
       { type: "divider" },
-      { key: "duplicate", icon: <CopyOutlined />, label: "Duplicate", onClick: onDuplicate },
+      {
+        key: "duplicate",
+        icon: <CopyOutlined />,
+        label: "Duplicate",
+        disabled: unsaved,
+        onClick: onDuplicate,
+      },
       { type: "divider" },
-      { key: "png", icon: <FileImageOutlined />, label: "Export PNG", onClick: onExportPNG },
-      { key: "json", icon: <DownloadOutlined />, label: "Export JSON", onClick: onExportJSON },
+      {
+        key: "png",
+        icon: <FileImageOutlined />,
+        label: "Export PNG",
+        onClick: onExportPNG,
+      },
+      {
+        key: "json",
+        icon: <DownloadOutlined />,
+        label: "Export JSON",
+        disabled: unsaved,
+        onClick: onExportJSON,
+      },
       { key: "import", icon: <UploadOutlined />, label: "Import JSON", onClick: onImportJSON },
       { type: "divider" },
-      { key: "delete", icon: <DeleteOutlined />, label: "Delete", danger: true, onClick: onDelete },
+      {
+        key: "delete",
+        icon: <DeleteOutlined />,
+        label: "Delete",
+        danger: true,
+        disabled: unsaved,
+        onClick: onDelete,
+      },
     ],
   };
 
   // Status label — differs by mode
   const statusLabel = (() => {
+    if (saving) return <Space size={4}><LoadingOutlined /> Saving</Space>;
+    if (unsaved) {
+      return (
+        <Space size={4}>
+          <span style={{ color: "#d97706" }}>●</span> Draft · unsaved
+        </Space>
+      );
+    }
     if (manualSave) {
-      if (saving) return <Space size={4}><LoadingOutlined /> Saving</Space>;
       if (dirty) return <Space size={4}><span style={{ color: "#d97706" }}>●</span> Unsaved</Space>;
       return <Space size={4}><CheckCircleOutlined /> Saved</Space>;
     }
-    // Auto-save mode
-    if (saving) return <Space size={4}><LoadingOutlined /> Saving</Space>;
     return <Space size={4}><CheckCircleOutlined /> Auto-saved</Space>;
   })();
 

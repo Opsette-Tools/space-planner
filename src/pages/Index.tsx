@@ -70,16 +70,14 @@ export default function Index() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const createUntitled = async (type: LayoutType = "floor") => {
+  const createUntitled = (type: LayoutType = "floor") => {
     const layout = newEmptyLayout("Untitled layout", type);
-    await saveLayout(layout);
-    navigate(`/editor/${layout.id}`);
+    navigate(`/editor/${layout.id}`, { state: { draft: layout } });
   };
 
-  const handleUseTemplate = async (t: TemplateDef) => {
+  const handleUseTemplate = (t: TemplateDef) => {
     const layout = buildLayoutFromTemplate(t);
-    await saveLayout(layout);
-    navigate(`/editor/${layout.id}`);
+    navigate(`/editor/${layout.id}`, { state: { draft: layout } });
   };
 
   const handleDuplicate = async (l: LayoutData) => {

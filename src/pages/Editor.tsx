@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { App as AntApp, Button, Drawer, Layout, Space, Typography } from "antd";
-import { AppstoreAddOutlined, CopyOutlined, DeleteOutlined, SlidersOutlined } from "@ant-design/icons";
+import {
+  AppstoreAddOutlined,
+  CopyOutlined,
+  DeleteOutlined,
+  DisconnectOutlined,
+  SlidersOutlined,
+} from "@ant-design/icons";
 import { Canvas, type CanvasHandle } from "@/components/editor/Canvas";
 import { CanvasToolbar } from "@/components/editor/CanvasToolbar";
 import { EditorTopBar } from "@/components/editor/EditorTopBar";
@@ -40,6 +46,7 @@ function expandToGroup(items: LayoutItem[], ids: string[]): string[] {
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { message, modal } = AntApp.useApp();
   const isMobile = useIsMobile();
 
@@ -49,6 +56,10 @@ export default function EditorPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // True until the layout has been persisted to storage at least once.
+  // Drafts arrive via router state (from "New" or "Use template") and live
+  // only in memory until the user clicks Save.
+  const [unsaved, setUnsaved] = useState(false);
   const [zoomPct, setZoomPct] = useState(40);
   const [libOpen, setLibOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -67,6 +78,20 @@ export default function EditorPage() {
   useEffect(() => {
     if (!id) return;
     loadingRef.current = true;
+    const draft = (location.state as { draft?: LayoutData } | null)?.draft;
+    if (draft && draft.id === id) {
+      // Un-persisted draft handed off from the home page.
+      history.reset(draft);
+      setSelectedIds([]);
+      setDirty(true);
+      setUnsaved(true);
+      // Clear router state so a refresh doesn't keep re-applying the draft.
+      navigate(location.pathname, { replace: true, state: null });
+      setTimeout(() => {
+        loadingRef.current = false;
+      }, 200);
+      return;
+    }
     getLayout(id).then((l) => {
       if (!l) {
         message.error("Layout not found");
@@ -76,6 +101,7 @@ export default function EditorPage() {
       history.reset(l);
       setSelectedIds([]);
       setDirty(false);
+      setUnsaved(false);
       setTimeout(() => {
         loadingRef.current = false;
       }, 200);
@@ -103,6 +129,7 @@ export default function EditorPage() {
     await saveLayout({ ...layout, thumbnail, updatedAt: Date.now() });
     setSaving(false);
     setDirty(false);
+    setUnsaved(false);
   }, [layout]);
 
   // Mark dirty whenever layout changes post-load. Auto-save (when enabled) debounces.
@@ -126,16 +153,18 @@ export default function EditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout, manualSave]);
 
-  // Warn before unload when there are unsaved changes in manual-save mode
+  // Warn before unload when there are unsaved changes (manual-save mode) or
+  // when the layout has never been persisted at all.
   useEffect(() => {
-    if (!manualSave || !dirty) return;
+    const shouldWarn = unsaved || (manualSave && dirty);
+    if (!shouldWarn) return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [manualSave, dirty]);
+  }, [manualSave, dirty, unsaved]);
 
   const toggleManualSave = useCallback(async () => {
     if (!layout) return;
@@ -266,6 +295,35 @@ export default function EditorPage() {
     },
     [layout, selectedIds, history],
   );
+
+  // Break grouping for the selection (and any groupmates). Table/chair sets
+  // become independent items that can be edited one at a time.
+  const ungroupSelection = useCallback(() => {
+    if (!layout || selectedIds.length === 0) return;
+    const expanded = new Set(expandToGroup(layout.items, selectedIds));
+    // Only meaningful if something in the expanded set actually has a groupId.
+    const anyGrouped = layout.items.some((i) => expanded.has(i.id) && !!i.groupId);
+    if (!anyGrouped) return;
+    history.set((prev) =>
+      prev
+        ? {
+            ...prev,
+            items: prev.items.map((i) =>
+              expanded.has(i.id) && i.groupId ? { ...i, groupId: undefined } : i,
+            ),
+          }
+        : prev,
+    );
+    // Keep the expanded set selected so the user can immediately act on them.
+    setSelectedIds(Array.from(expanded));
+    message.success("Ungrouped");
+  }, [layout, selectedIds, history, message]);
+
+  const selectionHasGroup = useMemo(() => {
+    if (!layout || selectedIds.length === 0) return false;
+    const expanded = new Set(expandToGroup(layout.items, selectedIds));
+    return layout.items.some((i) => expanded.has(i.id) && !!i.groupId);
+  }, [layout, selectedIds]);
 
   // ---- Keyboard shortcuts ----
   useEffect(() => {
@@ -413,6 +471,7 @@ export default function EditorPage() {
       onDelete={deleteSelection}
       onForward={() => reorderSelection(1)}
       onBackward={() => reorderSelection(-1)}
+      onUngroup={ungroupSelection}
     />
   ) : null;
 
@@ -433,6 +492,15 @@ export default function EditorPage() {
         </Text>
         <div style={{ flex: 1 }} />
         <Space size={8}>
+          {selectionHasGroup && (
+            <Button
+              size="small"
+              icon={<DisconnectOutlined />}
+              onClick={ungroupSelection}
+            >
+              Ungroup
+            </Button>
+          )}
           <Button size="small" icon={<CopyOutlined />} onClick={duplicateSelection}>
             Duplicate
           </Button>
@@ -447,11 +515,21 @@ export default function EditorPage() {
     <Layout style={{ height: "100vh", background: "#ffffff" }}>
       <EditorTopBar
         name={layout.name}
+        unsaved={unsaved}
         onNameChange={(n) =>
           history.replace((prev) => (prev ? { ...prev, name: n } : prev))
         }
         onBack={() => {
-          if (manualSave && dirty) {
+          if (unsaved) {
+            modal.confirm({
+              title: "Discard this layout?",
+              content:
+                "This layout hasn't been saved yet. Leaving now will discard it entirely.",
+              okText: "Discard",
+              okButtonProps: { danger: true },
+              onOk: () => navigate("/"),
+            });
+          } else if (manualSave && dirty) {
             modal.confirm({
               title: "Leave without saving?",
               content: "Unsaved changes will be lost.",

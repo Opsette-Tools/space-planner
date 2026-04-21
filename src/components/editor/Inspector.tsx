@@ -14,6 +14,7 @@ import {
   ArrowUpOutlined,
   CopyOutlined,
   DeleteOutlined,
+  DisconnectOutlined,
   LockOutlined,
   UnlockOutlined,
 } from "@ant-design/icons";
@@ -45,6 +46,7 @@ interface Props {
   onDelete: () => void;
   onForward: () => void;
   onBackward: () => void;
+  onUngroup?: () => void;
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -71,6 +73,7 @@ export function Inspector({
   onDelete,
   onForward,
   onBackward,
+  onUngroup,
 }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: 14 }}>
@@ -241,6 +244,24 @@ export function Inspector({
           onChange={(v) => onChange({ locked: v })}
         />
       </div>
+
+      {item.groupId && onUngroup && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "8px 12px",
+            border: "1px solid #eaedf1",
+            borderRadius: 8,
+          }}
+        >
+          <Text style={{ fontSize: 13 }}>In a group</Text>
+          <Button size="small" icon={<DisconnectOutlined />} onClick={onUngroup}>
+            Ungroup
+          </Button>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         <Button size="small" icon={<ArrowUpOutlined />} onClick={onForward}>
