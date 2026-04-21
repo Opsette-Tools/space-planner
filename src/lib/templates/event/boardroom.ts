@@ -28,7 +28,7 @@ function buildBoardroom(): LayoutItem[] {
 
   // Credenza along the top wall
   items.push(
-    place("buffet", rX + 80, rY + 50, z++, {
+    place("credenza", rX + 80, rY + 50, z++, {
       width: 300,
       height: 40,
       label: "Credenza",

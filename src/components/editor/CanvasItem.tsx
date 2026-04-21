@@ -1,6 +1,7 @@
 import { memo } from "react";
 import type { LayoutItem } from "@/lib/types";
 import { findDef } from "@/lib/objectLibrary";
+import { getPictogram } from "@/lib/pictograms";
 
 interface Props {
   item: LayoutItem;
@@ -11,6 +12,7 @@ interface Props {
 function CanvasItemImpl({ item, selected, preview }: Props) {
   const def = findDef(item.type);
   const shape = def?.shape ?? "rect";
+  const pictogram = getPictogram(item.type);
   const dash =
     item.style.strokeStyle === "dashed"
       ? "6 4"
@@ -27,7 +29,17 @@ function CanvasItemImpl({ item, selected, preview }: Props) {
       viewBox={`0 0 ${item.width} ${item.height}`}
       style={{ display: "block", overflow: "visible" }}
     >
-      {shape === "circle" && (
+      {pictogram
+        ? pictogram({
+            w: item.width,
+            h: item.height,
+            fill: item.style.fill,
+            stroke: strokeColor,
+            strokeWidth,
+            dash,
+          })
+        : null}
+      {!pictogram && shape === "circle" && (
         <ellipse
           cx={item.width / 2}
           cy={item.height / 2}
@@ -39,7 +51,7 @@ function CanvasItemImpl({ item, selected, preview }: Props) {
           strokeDasharray={dash}
         />
       )}
-      {(shape === "rect" || shape === "line") && (
+      {!pictogram && (shape === "rect" || shape === "line") && (
         <rect
           x={0.5}
           y={0.5}
@@ -51,7 +63,7 @@ function CanvasItemImpl({ item, selected, preview }: Props) {
           strokeDasharray={dash}
         />
       )}
-      {(shape === "rounded" || shape === "label") && (
+      {!pictogram && (shape === "rounded" || shape === "label") && (
         <rect
           x={0.5}
           y={0.5}
@@ -65,7 +77,7 @@ function CanvasItemImpl({ item, selected, preview }: Props) {
           strokeDasharray={dash}
         />
       )}
-      {shape === "marker" && (
+      {!pictogram && shape === "marker" && (
         <>
           <circle
             cx={item.width / 2}

@@ -78,21 +78,15 @@ function build(): LayoutItem[] {
   // Bed + nightstands grouped as one unit
   const bedGroup = genId();
   items.push(
-    place("sofa", rX + 100, rY + 60, z++, {
+    place("bed", rX + 100, rY + 160, z++, {
       width: 180,
-      height: 120,
+      height: 200,
       label: "Bed",
       groupId: bedGroup,
-      style: {
-        fill: "#ece2d0",
-        stroke: "#8a7a55",
-        strokeStyle: "solid",
-        opacity: 1,
-      },
     }),
   );
   items.push(
-    place("table-rect", rX + 60, rY + 70, z++, {
+    place("nightstand", rX + 60, rY + 170, z++, {
       width: 40,
       height: 40,
       label: "",
@@ -100,14 +94,14 @@ function build(): LayoutItem[] {
     }),
   );
   items.push(
-    place("marker-icon", rX + 70, rY + 80, z++, {
+    place("marker-icon", rX + 70, rY + 180, z++, {
       width: 20,
       height: 20,
       label: "L",
     }),
   );
   items.push(
-    place("table-rect", rX + 280, rY + 70, z++, {
+    place("nightstand", rX + 280, rY + 170, z++, {
       width: 40,
       height: 40,
       label: "",
@@ -115,7 +109,7 @@ function build(): LayoutItem[] {
     }),
   );
   items.push(
-    place("marker-icon", rX + 290, rY + 80, z++, {
+    place("marker-icon", rX + 290, rY + 180, z++, {
       width: 20,
       height: 20,
       label: "L",
@@ -124,7 +118,7 @@ function build(): LayoutItem[] {
 
   // Dresser opposite the bed
   items.push(
-    place("buffet", rX + 110, rY + 300, z++, {
+    place("dresser", rX + 110, rY + 385, z++, {
       width: 160,
       height: 50,
       label: "Dresser",
@@ -133,14 +127,14 @@ function build(): LayoutItem[] {
 
   // Reading chair + side table in the corner
   items.push(
-    place("chair", rX + rW - 120, rY + 220, z++, {
+    place("armchair", rX + rW - 120, rY + 220, z++, {
       width: 60,
       height: 60,
       label: "",
     }),
   );
   items.push(
-    place("table-rect", rX + rW - 60, rY + 240, z++, {
+    place("nightstand", rX + rW - 60, rY + 240, z++, {
       width: 40,
       height: 40,
       label: "",

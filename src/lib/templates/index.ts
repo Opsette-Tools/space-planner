@@ -21,11 +21,6 @@ import {
   classroomLecture,
 } from "./event/classroom";
 import { boardroom } from "./event/boardroom";
-import {
-  expoBooth10x10,
-  expoBooth10x20,
-  expoBoothIsland,
-} from "./event/expoBooth";
 
 // Landscape
 import { propertyStarter } from "./landscape/propertyStarter";
@@ -58,9 +53,6 @@ export const TEMPLATES: TemplateDef[] = [
   classroomUShape,
   classroomLecture,
   boardroom,
-  expoBooth10x10,
-  expoBooth10x20,
-  expoBoothIsland,
 
   // Landscape
   propertyStarter,

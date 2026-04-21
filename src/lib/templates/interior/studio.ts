@@ -77,12 +77,12 @@ function build(): LayoutItem[] {
     }),
   );
   items.push(
-    place("sofa", rX + 50, rY + 50, z++, { width: 200, height: 100, label: "Bed" }),
+    place("bed", rX + 50, rY + 30, z++, { width: 160, height: 160, label: "Bed" }),
   );
   items.push(
-    place("table-rect", rX + 30, rY + 50, z++, {
-      width: 30,
-      height: 40,
+    place("nightstand", rX + 220, rY + 50, z++, {
+      width: 36,
+      height: 36,
       label: "",
     }),
   );
@@ -118,14 +118,14 @@ function build(): LayoutItem[] {
     }),
   );
   items.push(
-    place("table-rect", rX + rW - 170, rY + 300, z++, {
+    place("coffee-table", rX + rW - 170, rY + 300, z++, {
       width: 100,
       height: 45,
       label: "",
     }),
   );
   items.push(
-    place("chair", rX + rW - 200, rY + 370, z++, { width: 44, height: 44, label: "" }),
+    place("armchair", rX + rW - 200, rY + 370, z++, { width: 44, height: 44, label: "" }),
   );
 
   // Desk / work corner

@@ -64,19 +64,21 @@ function buildReception(guests: number): LayoutItem[] {
     );
   }
 
-  // Dance floor centered between head table and guest tables
+  // Dance floor centered between head table and guest tables — nudged closer
+  // to the head table to recover vertical space for guest rows.
   const danceSize = Math.min(280, hallWidth * 0.28);
   const danceX = hallX + hallWidth / 2 - danceSize / 2;
-  const danceY = headTableY + 110;
+  const danceY = headTableY + 100;
+  const danceH = danceSize * 0.75;
   items.push(
     place("dance-floor", danceX, danceY, z++, {
       width: danceSize,
-      height: danceSize * 0.75,
+      height: danceH,
       label: "Dance Floor",
     }),
   );
 
-  // DJ / band to the right of the dance floor, against the wall
+  // DJ / band to the right of the dance floor
   items.push(
     place("stage", danceX + danceSize + 20, danceY, z++, {
       width: 120,
@@ -101,20 +103,24 @@ function buildReception(guests: number): LayoutItem[] {
     }),
   );
 
-  // Bar along the right wall, below the DJ
+  // Bar flush against the right wall, oriented vertically at the dance-floor
+  // latitude — keeps the guest-table rows unobstructed.
+  const sideServiceY = danceY - 10;
+  const sideServiceH = danceH + 30;
   items.push(
-    place("buffet", hallX + hallWidth - 190, danceY + danceSize * 0.75 + 40, z++, {
-      width: 180,
-      height: 55,
+    place("buffet", hallX + hallWidth - 60, sideServiceY, z++, {
+      width: 50,
+      height: sideServiceH,
       label: "Bar",
     }),
   );
 
-  // Buffet run along the left wall (optional for plated; present for buffet-style)
+  // Buffet flush against the left wall, oriented vertically, at the same
+  // latitude as the bar.
   items.push(
-    place("buffet", hallX + 30, danceY + danceSize * 0.75 + 40, z++, {
-      width: 180,
-      height: 55,
+    place("buffet", hallX + 10, sideServiceY, z++, {
+      width: 50,
+      height: sideServiceH,
       label: "Buffet",
     }),
   );
@@ -128,16 +134,18 @@ function buildReception(guests: number): LayoutItem[] {
     }),
   );
 
-  // Guest tables — laid out in rows below the dance floor, centered
+  // Guest tables — laid out in rows below the dance floor, centered.
+  // tableSet footprint ≈ 160 wide (table 90 + 2×chairOffset 22 + chair 26),
+  // so spacingX 180 leaves a 20-unit breathing gap between neighbors' chairs.
   const tableSize = 90;
-  const spacingX = 170;
+  const spacingX = 180;
   const spacingY = 170;
-  const usableWidth = hallWidth - 160;
+  const usableWidth = hallWidth - 180; // leave ~90 on each side for side service / walls
   const cols = Math.max(3, Math.floor(usableWidth / spacingX));
   const rows = Math.ceil(tablesNeeded / cols);
   const gridWidth = (cols - 1) * spacingX;
   const firstX = hallX + hallWidth / 2 - gridWidth / 2;
-  const firstY = danceY + danceSize * 0.75 + 130;
+  const firstY = danceY + danceH + 110;
 
   let tableNum = 1;
   for (let r = 0; r < rows && tableNum <= tablesNeeded; r++) {

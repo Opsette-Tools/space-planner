@@ -64,7 +64,7 @@ function buildRowsCeremony(guests: number): LayoutItem[] {
   let remaining = guests;
   for (let r = 0; r < rowsNeeded && remaining > 0; r++) {
     const y = rowsStartY + r * rowGap;
-    // Left side
+    // Left side — chairs face north (toward altar), so rotation: 180
     const leftInThisRow = Math.min(chairsPerRow, Math.ceil(remaining / 2));
     for (let c = 0; c < leftInThisRow; c++) {
       items.push(
@@ -74,7 +74,7 @@ function buildRowsCeremony(guests: number): LayoutItem[] {
             c * (chairW + chairGap),
           y,
           z++,
-          { width: chairW, height: chairW, label: "" },
+          { width: chairW, height: chairW, rotation: 180, label: "" },
         ),
       );
       remaining--;
@@ -86,6 +86,7 @@ function buildRowsCeremony(guests: number): LayoutItem[] {
         place("chair", rightBankX + c * (chairW + chairGap), y, z++, {
           width: chairW,
           height: chairW,
+          rotation: 180,
           label: "",
         }),
       );
@@ -106,6 +107,25 @@ function buildRowsCeremony(guests: number): LayoutItem[] {
       width: bankWidth,
       height: 22,
       label: "Reserved",
+    }),
+  );
+
+  // Entry at the back — door sitting ON the south zone-boundary, centered
+  const doorW = 80;
+  const doorH = 8;
+  items.push(
+    place("door", zoneX + zoneW / 2 - doorW / 2, zoneY + zoneH - doorH, z++, {
+      width: doorW,
+      height: doorH,
+      label: "",
+    }),
+  );
+  // "Entry" label sits inside the room, just above the door
+  items.push(
+    place("label-text", zoneX + zoneW / 2 - 40, zoneY + zoneH - doorH - 26, z++, {
+      width: 80,
+      height: 22,
+      label: "Entry",
     }),
   );
 

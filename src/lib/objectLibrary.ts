@@ -9,6 +9,8 @@ export interface LibraryDef {
   fill: string;
   stroke: string;
   shape?: "rect" | "circle" | "rounded" | "line" | "label" | "marker";
+  /** Optional sub-grouping label shown as a header inside the category panel. */
+  subgroup?: string;
 }
 
 const C = {
@@ -36,13 +38,27 @@ export const LIBRARY: LibraryDef[] = [
   { type: "room-open", category: "rooms", label: "Open Zone", width: 280, height: 200, fill: "#f0ead8", stroke: C.roomStroke, shape: "rounded" },
   { type: "room-labeled", category: "rooms", label: "Labeled Zone", width: 260, height: 180, fill: "#ece5cf", stroke: C.roomStroke, shape: "rect" },
 
-  // Furniture
-  { type: "table-round", category: "furniture", label: "Round Table", width: 80, height: 80, fill: C.furniture, stroke: C.furnitureStroke, shape: "circle" },
-  { type: "table-rect", category: "furniture", label: "Rect Table", width: 120, height: 60, fill: C.furniture, stroke: C.furnitureStroke, shape: "rect" },
-  { type: "chair", category: "furniture", label: "Chair", width: 32, height: 32, fill: C.furniture, stroke: C.furnitureStroke, shape: "rounded" },
-  { type: "desk", category: "furniture", label: "Desk", width: 140, height: 60, fill: C.furniture, stroke: C.furnitureStroke, shape: "rect" },
-  { type: "sofa", category: "furniture", label: "Sofa", width: 160, height: 60, fill: C.furniture, stroke: C.furnitureStroke, shape: "rounded" },
-  { type: "bench", category: "furniture", label: "Bench", width: 140, height: 36, fill: C.furniture, stroke: C.furnitureStroke, shape: "rect" },
+  // Furniture — Seating
+  { type: "chair", category: "furniture", subgroup: "Seating", label: "Chair", width: 32, height: 32, fill: C.furniture, stroke: C.furnitureStroke, shape: "rounded" },
+  { type: "armchair", category: "furniture", subgroup: "Seating", label: "Armchair", width: 60, height: 60, fill: C.furniture, stroke: C.furnitureStroke, shape: "rounded" },
+  { type: "sofa", category: "furniture", subgroup: "Seating", label: "Sofa", width: 160, height: 60, fill: C.furniture, stroke: C.furnitureStroke, shape: "rounded" },
+  { type: "bench", category: "furniture", subgroup: "Seating", label: "Bench", width: 140, height: 36, fill: C.furniture, stroke: C.furnitureStroke, shape: "rect" },
+
+  // Furniture — Tables
+  { type: "table-round", category: "furniture", subgroup: "Tables", label: "Round Table", width: 80, height: 80, fill: C.furniture, stroke: C.furnitureStroke, shape: "circle" },
+  { type: "table-rect", category: "furniture", subgroup: "Tables", label: "Rect Table", width: 120, height: 60, fill: C.furniture, stroke: C.furnitureStroke, shape: "rect" },
+  { type: "coffee-table", category: "furniture", subgroup: "Tables", label: "Coffee Table", width: 100, height: 50, fill: C.furniture, stroke: C.furnitureStroke, shape: "rounded" },
+  { type: "desk", category: "furniture", subgroup: "Tables", label: "Desk", width: 140, height: 60, fill: C.furniture, stroke: C.furnitureStroke, shape: "rect" },
+
+  // Furniture — Storage
+  { type: "dresser", category: "furniture", subgroup: "Storage", label: "Dresser", width: 160, height: 50, fill: C.furniture, stroke: C.furnitureStroke, shape: "rect" },
+  { type: "credenza", category: "furniture", subgroup: "Storage", label: "Credenza", width: 200, height: 50, fill: C.furniture, stroke: C.furnitureStroke, shape: "rect" },
+  { type: "bookshelf", category: "furniture", subgroup: "Storage", label: "Bookshelf", width: 120, height: 36, fill: C.furniture, stroke: C.furnitureStroke, shape: "rect" },
+  { type: "tv-stand", category: "furniture", subgroup: "Storage", label: "TV Stand", width: 140, height: 40, fill: C.furniture, stroke: C.furnitureStroke, shape: "rect" },
+
+  // Furniture — Bedroom
+  { type: "bed", category: "furniture", subgroup: "Bedroom", label: "Bed", width: 160, height: 200, fill: "#f0e8d8", stroke: C.furnitureStroke, shape: "rect" },
+  { type: "nightstand", category: "furniture", subgroup: "Bedroom", label: "Nightstand", width: 40, height: 40, fill: C.furniture, stroke: C.furnitureStroke, shape: "rect" },
 
   // Event
   { type: "stage", category: "event", label: "Stage", width: 240, height: 120, fill: C.event, stroke: C.eventStroke, shape: "rect" },

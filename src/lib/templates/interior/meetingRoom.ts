@@ -50,11 +50,12 @@ function build(): LayoutItem[] {
     }),
   );
 
-  // Credenza (coffee service) along the left wall
+  // Credenza (coffee service) along the left wall — rotated so it runs vertically
   items.push(
-    place("buffet", rX + 20, rY + 80, z++, {
-      width: 40,
-      height: 160,
+    place("credenza", rX - 40, rY + 140, z++, {
+      width: 160,
+      height: 40,
+      rotation: 90,
       label: "Credenza",
     }),
   );

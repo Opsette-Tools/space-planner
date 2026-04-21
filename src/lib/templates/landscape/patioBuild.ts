@@ -16,6 +16,22 @@ function build(): LayoutItem[] {
   const pY = 1600;
   const pW = 440;
   const pH = 320;
+
+  // Soft lawn zone around the patio — drawn FIRST so later items sit on top.
+  items.push(
+    place("room-rect", pX - 120, pY - 80, z++, {
+      width: pW + 240,
+      height: pH + 280,
+      label: "Lawn",
+      style: {
+        fill: "#e6efdc",
+        stroke: "#8aa070",
+        strokeStyle: "dashed",
+        opacity: 1,
+      },
+    }),
+  );
+
   items.push(
     place("patio", pX, pY, z++, {
       width: pW,
@@ -129,21 +145,6 @@ function build(): LayoutItem[] {
       width: 60,
       height: 140,
       label: "Walkway",
-    }),
-  );
-
-  // Soft lawn zone around the patio
-  items.push(
-    place("room-rect", pX - 120, pY - 80, z++, {
-      width: pW + 240,
-      height: pH + 280,
-      label: "Lawn",
-      style: {
-        fill: "#e6efdc",
-        stroke: "#8aa070",
-        strokeStyle: "dashed",
-        opacity: 1,
-      },
     }),
   );
 
