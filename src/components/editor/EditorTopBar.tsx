@@ -7,7 +7,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ArrowLeft, Check, Download, Copy, FileJson, FileImage, MoreHorizontal, Trash2, Upload, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, Copy, FileJson, FileImage, MoreHorizontal, Redo2, Trash2, Undo2, Upload, Loader2 } from "lucide-react";
 import { useState } from "react";
 
 interface Props {
@@ -16,6 +16,10 @@ interface Props {
   onBack: () => void;
   saving: boolean;
   zoomPct: number;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   onExportJSON: () => void;
   onExportPNG: () => void;
   onImportJSON: () => void;
@@ -29,6 +33,10 @@ export function EditorTopBar({
   onBack,
   saving,
   zoomPct,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   onExportJSON,
   onExportPNG,
   onImportJSON,
@@ -74,6 +82,24 @@ export function EditorTopBar({
       )}
 
       <div className="ml-auto flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onUndo}
+          disabled={!canUndo}
+          aria-label="Undo"
+        >
+          <Undo2 className="w-4 h-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onRedo}
+          disabled={!canRedo}
+          aria-label="Redo"
+        >
+          <Redo2 className="w-4 h-4" />
+        </Button>
         <span className="hidden sm:inline-flex text-xs text-muted-foreground tabular-nums">{zoomPct}%</span>
         <span className="hidden sm:inline-flex items-center gap-1 text-xs text-muted-foreground">
           {saving ? (
