@@ -262,11 +262,12 @@ export const TEMPLATES: TemplateDef[] = [
     build: () => {
       const items: LayoutItem[] = [];
       let z = 1;
-      items.push(place("room-rect", 1700, 1600, z++, { width: 700, height: 500, label: "Office" }));
+      items.push(place("room-rect", 1600, 1550, z++, { width: 800, height: 600, label: "Office" }));
       for (let r = 0; r < 3; r++) {
         for (let c = 0; c < 4; c++) {
-          items.push(place("desk", 1750 + c * 150, 1700 + r * 130, z++));
-          items.push(place("chair", 1790 + c * 150, 1770 + r * 130, z++));
+          const set = deskSet(1720 + c * 170, 1660 + r * 150, z, { label: "" });
+          items.push(...set);
+          z += set.length;
         }
       }
       return items;
