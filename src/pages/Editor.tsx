@@ -6,6 +6,7 @@ import {
   CopyOutlined,
   DeleteOutlined,
   DisconnectOutlined,
+  LinkOutlined,
   SlidersOutlined,
 } from "@ant-design/icons";
 import { Canvas, type CanvasHandle } from "@/components/editor/Canvas";
@@ -296,6 +297,28 @@ export default function EditorPage() {
     [layout, selectedIds, history],
   );
 
+  // Stamp a shared groupId on the selection (expanded to existing groupmates)
+  // so the items move and select together from now on. Merges any existing
+  // groups in the selection into one new group.
+  const groupSelection = useCallback(() => {
+    if (!layout || selectedIds.length < 2) return;
+    const expanded = new Set(expandToGroup(layout.items, selectedIds));
+    if (expanded.size < 2) return;
+    const newGroupId = genId();
+    history.set((prev) =>
+      prev
+        ? {
+            ...prev,
+            items: prev.items.map((i) =>
+              expanded.has(i.id) ? { ...i, groupId: newGroupId } : i,
+            ),
+          }
+        : prev,
+    );
+    setSelectedIds(Array.from(expanded));
+    message.success("Grouped");
+  }, [layout, selectedIds, history, message]);
+
   // Break grouping for the selection (and any groupmates). Table/chair sets
   // become independent items that can be edited one at a time.
   const ungroupSelection = useCallback(() => {
@@ -323,6 +346,22 @@ export default function EditorPage() {
     if (!layout || selectedIds.length === 0) return false;
     const expanded = new Set(expandToGroup(layout.items, selectedIds));
     return layout.items.some((i) => expanded.has(i.id) && !!i.groupId);
+  }, [layout, selectedIds]);
+
+  // Can group when the expanded selection contains >= 2 items AND isn't
+  // already a single unified group. (Selecting one chair of an existing set
+  // expands to the whole set — grouping that would be a no-op.)
+  const canGroupSelection = useMemo(() => {
+    if (!layout || selectedIds.length < 2) return false;
+    const expanded = layout.items.filter((i) =>
+      new Set(expandToGroup(layout.items, selectedIds)).has(i.id),
+    );
+    if (expanded.length < 2) return false;
+    const groupIds = new Set<string | undefined>();
+    for (const it of expanded) groupIds.add(it.groupId);
+    // If every expanded item shares the same defined groupId, already grouped.
+    if (groupIds.size === 1 && [...groupIds][0] !== undefined) return false;
+    return true;
   }, [layout, selectedIds]);
 
   // ---- Keyboard shortcuts ----
@@ -358,11 +397,25 @@ export default function EditorPage() {
         duplicateSelection();
         return;
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "g") {
+        e.preventDefault();
+        if (e.shiftKey) ungroupSelection();
+        else groupSelection();
+        return;
+      }
       if (e.key === "Escape") setSelectedIds([]);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedIds, history, deleteSelection, duplicateSelection, persistLayout]);
+  }, [
+    selectedIds,
+    history,
+    deleteSelection,
+    duplicateSelection,
+    persistLayout,
+    groupSelection,
+    ungroupSelection,
+  ]);
 
   const handleExportJSON = () => {
     if (layout) downloadJSON(layout);
@@ -492,6 +545,15 @@ export default function EditorPage() {
         </Text>
         <div style={{ flex: 1 }} />
         <Space size={8}>
+          {canGroupSelection && (
+            <Button
+              size="small"
+              icon={<LinkOutlined />}
+              onClick={groupSelection}
+            >
+              Group
+            </Button>
+          )}
           {selectionHasGroup && (
             <Button
               size="small"
