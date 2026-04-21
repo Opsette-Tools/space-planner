@@ -31,6 +31,9 @@ export interface LayoutItem {
   locked: boolean;
   style: ItemStyle;
   notes?: string;
+  /** If set, this item belongs to a group. All items sharing the same groupId
+   *  are selected and transformed together. */
+  groupId?: string;
 }
 
 export interface CanvasSettings {
