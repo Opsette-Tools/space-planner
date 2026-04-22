@@ -7,7 +7,8 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Layout, LayoutItem } from "@/lib/types";
+import type { Layout, LayoutItem, ReferenceImage } from "@/lib/types";
+import type { DetectedShape } from "@/lib/detectShapes";
 import { CanvasItem } from "./CanvasItem";
 
 export interface CanvasHandle {
@@ -28,9 +29,18 @@ interface Props {
   /** Update many items at once. Used for drag/rotate/resize so history can
    *  coalesce a single entry per gesture. */
   onUpdateItems: (patches: Record<string, Partial<LayoutItem>>) => void;
+  /** Patch the reference image's position/size. Only called during unlocked
+   *  reference drag/resize gestures. */
+  onUpdateReference?: (patch: Partial<ReferenceImage>) => void;
   onGestureStart: () => void;
   onGestureEnd: () => void;
   onZoomChange?: (z: number) => void;
+  /** When false, the reference image is not rendered. Used during PNG export
+   *  so tracing scaffolding doesn't end up in the exported image. */
+  renderReference?: boolean;
+  /** Shapes to draw as an overlay preview (dashed outlines). Rendered in
+   *  canvas space so they move with pan/zoom. */
+  previewShapes?: DetectedShape[];
 }
 
 const SNAP_GUIDE_THRESHOLD = 6; // px in canvas space
@@ -156,9 +166,12 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
     selectedIds,
     onSelectionChange,
     onUpdateItems,
+    onUpdateReference,
     onGestureStart,
     onGestureEnd,
     onZoomChange,
+    renderReference = true,
+    previewShapes,
   },
   ref,
 ) {
@@ -667,6 +680,69 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
+  // ---- Reference image gestures (independent from item gestures) ----
+  // Only active when the reference exists, is visible, and is unlocked.
+  const refGesture = useRef<{
+    mode: "none" | "drag" | "resize";
+    startClient: { x: number; y: number };
+    start: ReferenceImage | null;
+  }>({ mode: "none", startClient: { x: 0, y: 0 }, start: null });
+
+  const onReferencePointerDown = (
+    e: React.PointerEvent<HTMLElement>,
+    mode: "drag" | "resize",
+  ) => {
+    if (!layout.reference || layout.reference.locked || !onUpdateReference) return;
+    e.stopPropagation();
+    e.preventDefault();
+    refGesture.current = {
+      mode,
+      startClient: { x: e.clientX, y: e.clientY },
+      start: { ...layout.reference },
+    };
+    onGestureStart();
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const onReferencePointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    const g = refGesture.current;
+    if (g.mode === "none" || !g.start || !onUpdateReference) return;
+    const dx = (e.clientX - g.startClient.x) / zoom;
+    const dy = (e.clientY - g.startClient.y) / zoom;
+    if (g.mode === "drag") {
+      onUpdateReference({ x: g.start.x + dx, y: g.start.y + dy });
+    } else {
+      // Resize from bottom-right. Preserve aspect ratio (shift = free).
+      const aspect = g.start.width / g.start.height;
+      let newW = Math.max(16, g.start.width + dx);
+      let newH = Math.max(16, g.start.height + dy);
+      if (!e.shiftKey) {
+        // Lock to aspect: pick the larger delta to drive both dimensions.
+        if (Math.abs(dx / g.start.width) > Math.abs(dy / g.start.height)) {
+          newH = newW / aspect;
+        } else {
+          newW = newH * aspect;
+        }
+      }
+      onUpdateReference({ width: newW, height: newH });
+    }
+  };
+
+  const onReferencePointerUp = (e: React.PointerEvent<HTMLElement>) => {
+    if (refGesture.current.mode === "none") return;
+    refGesture.current = { mode: "none", startClient: { x: 0, y: 0 }, start: null };
+    onGestureEnd();
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  };
+
   const startRotate = (e: React.PointerEvent) => {
     if (!selectionBounds || allLocked) return;
     e.stopPropagation();
@@ -718,8 +794,91 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
             "0 0 0 1px hsl(var(--border)), 0 8px 24px -8px rgba(0,0,0,0.08)",
         }}
       >
+        {renderReference && layout.reference && layout.reference.visible && (
+          <>
+            <img
+              src={layout.reference.dataUrl}
+              alt=""
+              draggable={false}
+              onPointerDown={(e) =>
+                !layout.reference!.locked && onReferencePointerDown(e, "drag")
+              }
+              onPointerMove={onReferencePointerMove}
+              onPointerUp={onReferencePointerUp}
+              onPointerCancel={onReferencePointerUp}
+              style={{
+                position: "absolute",
+                left: layout.reference.x,
+                top: layout.reference.y,
+                width: layout.reference.width,
+                height: layout.reference.height,
+                opacity: layout.reference.opacity,
+                pointerEvents: layout.reference.locked ? "none" : "auto",
+                cursor: layout.reference.locked ? "default" : "move",
+                userSelect: "none",
+                // Locked: behind items so they're still clickable.
+                // Unlocked: above items so the whole image is grabbable.
+                zIndex: layout.reference.locked ? 0 : 99997,
+              }}
+            />
+            {!layout.reference.locked && (
+              <>
+                <div
+                  style={{
+                    position: "absolute",
+                    left: layout.reference.x,
+                    top: layout.reference.y,
+                    width: layout.reference.width,
+                    height: layout.reference.height,
+                    outline: `${1.5 / zoom}px dashed hsl(var(--selection))`,
+                    pointerEvents: "none",
+                    zIndex: 99998,
+                  }}
+                />
+                <div
+                  onPointerDown={(e) => onReferencePointerDown(e, "resize")}
+                  onPointerMove={onReferencePointerMove}
+                  onPointerUp={onReferencePointerUp}
+                  onPointerCancel={onReferencePointerUp}
+                  style={{
+                    position: "absolute",
+                    left: layout.reference.x + layout.reference.width - 8 / zoom,
+                    top: layout.reference.y + layout.reference.height - 8 / zoom,
+                    width: 16 / zoom,
+                    height: 16 / zoom,
+                    background: "hsl(var(--selection))",
+                    border: `${2 / zoom}px solid white`,
+                    borderRadius: 4 / zoom,
+                    cursor: "nwse-resize",
+                    zIndex: 99999,
+                  }}
+                />
+              </>
+            )}
+          </>
+        )}
+
         {layout.items.map((it) => (
           <CanvasItem key={it.id} item={it} selected={selectedSet.has(it.id)} />
+        ))}
+
+        {/* Detection preview overlays */}
+        {previewShapes?.map((s, i) => (
+          <div
+            key={`preview-${i}`}
+            style={{
+              position: "absolute",
+              left: s.x,
+              top: s.y,
+              width: s.width,
+              height: s.height,
+              border: `${2 / zoom}px dashed hsl(var(--selection))`,
+              background: "hsl(var(--selection) / 0.08)",
+              borderRadius: s.kind === "circle" ? "50%" : 4 / zoom,
+              pointerEvents: "none",
+              zIndex: 99996,
+            }}
+          />
         ))}
 
         {/* Alignment guides */}

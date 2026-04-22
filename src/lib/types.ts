@@ -44,6 +44,23 @@ export interface CanvasSettings {
   gridSize: number;
 }
 
+/** A background tracing image (imported from PNG/JPG/PDF) that sits behind
+ *  every LayoutItem. One per layout. */
+export interface ReferenceImage {
+  /** base64 PNG data URL. PDFs are rasterized to PNG at import time. */
+  dataUrl: string;
+  /** Top-left in canvas coordinates. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** 0 – 1. 0.4 by default so it's visible but doesn't compete with work. */
+  opacity: number;
+  visible: boolean;
+  /** When locked, the image ignores pointer events on the canvas. Default ON. */
+  locked: boolean;
+}
+
 export interface Layout {
   id: string;
   name: string;
@@ -56,6 +73,8 @@ export interface Layout {
   /** When true (default), the editor does NOT autosave. The user clicks Save
    *  (or Cmd/Ctrl+S) to persist. When false, changes autosave after a debounce. */
   manualSave?: boolean;
+  /** Optional tracing image behind items. */
+  reference?: ReferenceImage;
 }
 
 export const LAYOUT_TYPE_LABEL: Record<LayoutType, string> = {

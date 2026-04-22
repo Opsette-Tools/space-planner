@@ -17,7 +17,7 @@ import { ObjectLibrary } from "@/components/editor/ObjectLibrary";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useHistory } from "@/hooks/useHistory";
 import { deleteLayout, genId, getLayout, getPrefs, saveLayout, setPref } from "@/lib/storage";
-import type { Layout as LayoutData, LayoutItem } from "@/lib/types";
+import type { Layout as LayoutData, LayoutItem, ReferenceImage } from "@/lib/types";
 import type { LibraryDef } from "@/lib/objectLibrary";
 import { makeItem } from "@/lib/objectLibrary";
 import {
@@ -26,6 +26,10 @@ import {
   importJSON,
   nodeToPng,
 } from "@/lib/exporters";
+import { fileToReference } from "@/lib/referenceImport";
+import { detectShapes, type DetectedShape } from "@/lib/detectShapes";
+import { DetectionBar } from "@/components/editor/DetectionPreview";
+import { findDef } from "@/lib/objectLibrary";
 
 const { Text } = Typography;
 
@@ -70,6 +74,16 @@ export default function EditorPage() {
   const LIB_DEFAULT = 252;
   const [libWidth, setLibWidth] = useState(LIB_DEFAULT);
   const libWidthLoaded = useRef(false);
+  // When false, the reference image is hidden. Used during PNG export so
+  // tracing scaffolding doesn't get baked into the output.
+  const [renderReference, setRenderReference] = useState(true);
+  // Shape detection state: pending preview, running flag.
+  const [detecting, setDetecting] = useState(false);
+  const [detection, setDetection] = useState<{
+    shapes: DetectedShape[];
+    rectCount: number;
+    circleCount: number;
+  } | null>(null);
 
   const canvasRef = useRef<CanvasHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -234,6 +248,124 @@ export default function EditorPage() {
     },
     [history],
   );
+
+  // ---- Reference image mutators ----
+  // Coalesced: drag/resize gestures push one history entry per gesture via
+  // Canvas's beginCoalesce/commitCoalesce wiring (shared with item gestures).
+  const updateReference = useCallback(
+    (patch: Partial<ReferenceImage>) => {
+      history.set((prev) =>
+        prev && prev.reference ? { ...prev, reference: { ...prev.reference, ...patch } } : prev,
+      );
+    },
+    [history],
+  );
+
+  const importReference = useCallback(
+    async (file: File) => {
+      if (!layout) return;
+      try {
+        const ref = await fileToReference(file, layout.canvas);
+        history.set((prev) => (prev ? { ...prev, reference: ref } : prev));
+        message.success("Reference added");
+      } catch (err) {
+        message.error(err instanceof Error ? err.message : "Couldn't read that file");
+      }
+    },
+    [layout, history, message],
+  );
+
+  const replaceReference = useCallback(
+    async (file: File) => {
+      if (!layout?.reference) return importReference(file);
+      try {
+        const next = await fileToReference(file, layout.canvas);
+        // Preserve the user's current placement + display settings when swapping the image.
+        const prev = layout.reference;
+        const merged: ReferenceImage = {
+          ...next,
+          x: prev.x,
+          y: prev.y,
+          width: prev.width,
+          height: prev.height,
+          opacity: prev.opacity,
+          visible: prev.visible,
+          locked: prev.locked,
+        };
+        history.set((p) => (p ? { ...p, reference: merged } : p));
+        message.success("Reference replaced");
+      } catch (err) {
+        message.error(err instanceof Error ? err.message : "Couldn't read that file");
+      }
+    },
+    [layout, history, message, importReference],
+  );
+
+  const removeReference = useCallback(() => {
+    history.set((prev) => {
+      if (!prev) return prev;
+      const { reference: _r, ...rest } = prev;
+      return rest as LayoutData;
+    });
+  }, [history]);
+
+  // Run shape detection against the current reference image. The pipeline
+  // is synchronous CPU work; we yield a frame first so the popover's
+  // "loading" state renders before we block the main thread for ~0.5–2s.
+  const runDetection = useCallback(async () => {
+    if (!layout?.reference || detecting) return;
+    setDetecting(true);
+    try {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      const result = await detectShapes(layout.reference);
+      setDetection(result);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Detection failed");
+    } finally {
+      setDetecting(false);
+    }
+  }, [layout, detecting, message]);
+
+  const cancelDetection = useCallback(() => setDetection(null), []);
+
+  // Commit all detected shapes as LayoutItems in a single history entry.
+  // Rectangles → room-rect (a filled rect). Circles → table-round (the only
+  // library def that actually renders as a circle; room-rounded is a
+  // rounded-corner rectangle, not a circle). User can retag freely.
+  const commitDetection = useCallback(() => {
+    if (!detection || !layout) return;
+    const rectDef = findDef("room-rect");
+    const roundDef = findDef("table-round");
+    if (!rectDef || !roundDef) return;
+    const maxZ = layout.items.reduce((m, i) => Math.max(m, i.zIndex), 0);
+    const newItems: LayoutItem[] = detection.shapes.map((s, i) => {
+      const def = s.kind === "circle" ? roundDef : rectDef;
+      return {
+        id: genId(),
+        type: def.type,
+        category: def.category,
+        x: Math.round(s.x),
+        y: Math.round(s.y),
+        width: Math.max(16, Math.round(s.width)),
+        height: Math.max(16, Math.round(s.height)),
+        rotation: 0,
+        zIndex: maxZ + 1 + i,
+        label: def.label,
+        locked: false,
+        style: {
+          fill: def.fill,
+          stroke: def.stroke,
+          strokeStyle: "solid",
+          opacity: 1,
+        },
+        notes: "",
+      };
+    });
+    history.set((prev) => (prev ? { ...prev, items: [...prev.items, ...newItems] } : prev));
+    setDetection(null);
+    setSelectedIds(newItems.map((i) => i.id));
+    message.success(`Added ${newItems.length} shape${newItems.length === 1 ? "" : "s"}`);
+  }, [detection, layout, history, message]);
 
   const addItemFromDef = useCallback(
     (def: LibraryDef) => {
@@ -430,6 +562,13 @@ export default function EditorPage() {
   const handleExportPNG = async () => {
     const stage = canvasRef.current?.getStage();
     if (!stage || !layout) return;
+    // Hide the reference image during capture so it doesn't bake into the PNG.
+    const hadRef = !!layout.reference;
+    if (hadRef) {
+      setRenderReference(false);
+      // Let React commit the hidden state before html-to-image walks the DOM.
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
     try {
       const dataUrl = await nodeToPng(stage, {
         width: layout.canvas.width,
@@ -440,6 +579,8 @@ export default function EditorPage() {
       message.success("PNG exported");
     } catch {
       message.error("PNG export failed");
+    } finally {
+      if (hadRef) setRenderReference(true);
     }
   };
 
@@ -657,6 +798,14 @@ export default function EditorPage() {
         onImportJSON={handleImportClick}
         onDuplicate={handleDuplicateLayout}
         onDelete={confirmDeleteLayout}
+        reference={layout.reference ?? null}
+        onReferenceChange={updateReference}
+        onReferenceImport={importReference}
+        onReferenceReplace={replaceReference}
+        onReferenceRemove={removeReference}
+        onReferenceDetect={runDetection}
+        referenceDetecting={detecting}
+        referenceDetectDisabled={!!detection}
       />
 
       <input
@@ -724,10 +873,22 @@ export default function EditorPage() {
               selectedIds={selectedIds}
               onSelectionChange={handleSelectionChange}
               onUpdateItems={updateItems}
+              onUpdateReference={updateReference}
+              renderReference={renderReference}
+              previewShapes={detection?.shapes}
               onGestureStart={history.beginCoalesce}
               onGestureEnd={history.commitCoalesce}
               onZoomChange={(z) => setZoomPct(Math.round(z * 100))}
             />
+            {detection && (
+              <DetectionBar
+                shapes={detection.shapes}
+                rectCount={detection.rectCount}
+                circleCount={detection.circleCount}
+                onCommit={commitDetection}
+                onCancel={cancelDetection}
+              />
+            )}
             <CanvasToolbar
               showGrid={layout.canvas.showGrid}
               snap={layout.canvas.snap}

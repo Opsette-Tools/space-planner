@@ -23,6 +23,7 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EllipsisOutlined,
+  FileImageOutlined,
   FileOutlined,
   FolderOpenOutlined,
   PlusOutlined,
@@ -31,6 +32,7 @@ import {
 } from "@ant-design/icons";
 import { deleteLayout, genId, listLayouts, saveLayout } from "@/lib/storage";
 import { downloadJSON, importJSON } from "@/lib/exporters";
+import { fileToReference, REFERENCE_ACCEPT } from "@/lib/referenceImport";
 import {
   TEMPLATES,
   buildLayoutFromTemplate,
@@ -60,6 +62,7 @@ export default function Index() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const imageRef = useRef<HTMLInputElement>(null);
 
   const refresh = async () => {
     const next = await listLayouts();
@@ -112,6 +115,20 @@ export default function Index() {
     });
   };
 
+  const handleImportImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const layout = newEmptyLayout(file.name.replace(/\.[^.]+$/, "") || "From image", "general");
+      const ref = await fileToReference(file, layout.canvas);
+      layout.reference = ref;
+      navigate(`/editor/${layout.id}`, { state: { draft: layout } });
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Couldn't read that file");
+    }
+  };
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -145,6 +162,12 @@ export default function Index() {
         onClick: () => createUntitled(t),
       })),
       { type: "divider" as const },
+      {
+        key: "from-image",
+        icon: <FileImageOutlined />,
+        label: "Start from image…",
+        onClick: () => imageRef.current?.click(),
+      },
       {
         key: "import",
         icon: <UploadOutlined />,
@@ -237,6 +260,13 @@ export default function Index() {
             accept=".json,application/json"
             style={{ display: "none" }}
             onChange={handleImport}
+          />
+          <input
+            ref={imageRef}
+            type="file"
+            accept={REFERENCE_ACCEPT}
+            style={{ display: "none" }}
+            onChange={handleImportImage}
           />
           <Dropdown.Button
             type="primary"

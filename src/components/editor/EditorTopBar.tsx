@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Button, Dropdown, Input, Space, Tooltip, Typography } from "antd";
 import type { MenuProps } from "antd";
+import { ReferenceControls } from "./ReferenceControls";
+import type { ReferenceImage } from "@/lib/types";
 import {
   ArrowLeftOutlined,
   CheckCircleOutlined,
@@ -40,6 +42,14 @@ interface Props {
   onImportJSON: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  reference: ReferenceImage | null;
+  onReferenceChange: (patch: Partial<ReferenceImage>) => void;
+  onReferenceImport: (file: File) => void;
+  onReferenceReplace: (file: File) => void;
+  onReferenceRemove: () => void;
+  onReferenceDetect: () => void;
+  referenceDetecting: boolean;
+  referenceDetectDisabled: boolean;
 }
 
 export function EditorTopBar({
@@ -62,6 +72,14 @@ export function EditorTopBar({
   onImportJSON,
   onDuplicate,
   onDelete,
+  reference,
+  onReferenceChange,
+  onReferenceImport,
+  onReferenceReplace,
+  onReferenceRemove,
+  onReferenceDetect,
+  referenceDetecting,
+  referenceDetectDisabled,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
@@ -190,6 +208,17 @@ export function EditorTopBar({
           {name}
         </button>
       )}
+
+      <ReferenceControls
+        reference={reference}
+        onChange={onReferenceChange}
+        onImport={onReferenceImport}
+        onReplace={onReferenceReplace}
+        onRemove={onReferenceRemove}
+        onDetect={onReferenceDetect}
+        detecting={referenceDetecting}
+        detectDisabled={referenceDetectDisabled}
+      />
 
       <div style={{ flex: 1 }} />
 
