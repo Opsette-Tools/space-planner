@@ -24,6 +24,14 @@ export interface DetectedShape {
   y: number;
   width: number;
   height: number;
+  /** width / height in canvas units. 1 = square. > 1 = wider than tall. */
+  aspectRatio: number;
+  /** Fraction of pixels inside the bbox that were "on" in the binary edge
+   *  image. Low (~0.05) = empty outline. High (~0.3) = densely drawn / filled /
+   *  hatched. Used for semantic hints (beds have stripes, rugs are empty). */
+  fillDensity: number;
+  /** Rough size bucket in CANVAS units, for classifier use. */
+  sizeClass: "xs" | "s" | "m" | "l" | "xl";
 }
 
 export interface DetectionResult {
@@ -267,6 +275,27 @@ function classify(
   return null;
 }
 
+/** Fraction of "on" pixels inside a bbox in a binary image. */
+function densityIn(
+  edges: Uint8Array,
+  w: number,
+  bb: Bbox,
+): number {
+  const x0 = Math.max(0, Math.floor(bb.x));
+  const y0 = Math.max(0, Math.floor(bb.y));
+  const x1 = Math.floor(bb.x + bb.w);
+  const y1 = Math.floor(bb.y + bb.h);
+  const area = Math.max(1, (x1 - x0) * (y1 - y0));
+  let on = 0;
+  for (let y = y0; y < y1; y++) {
+    const row = y * w;
+    for (let x = x0; x < x1; x++) {
+      if (edges[row + x]) on++;
+    }
+  }
+  return on / area;
+}
+
 /** Map a bbox from sampled-image-space (SAMPLE_MAX dimension) to
  *  original-image-space, then into canvas space via the reference placement. */
 function imageToCanvas(
@@ -318,8 +347,25 @@ export async function detectShapes(
     if (bbArea < minArea || bbArea > maxArea) continue;
     const kind = classify(hull, bb);
     if (!kind) continue;
+    const density = densityIn(edges, w, bb);
     const mapped = imageToCanvas(bb, scale, ref, origW, origH);
-    shapes.push({ kind, x: mapped.x, y: mapped.y, width: mapped.w, height: mapped.h });
+    const aspect = mapped.w / Math.max(1, mapped.h);
+    const longEdge = Math.max(mapped.w, mapped.h);
+    const sizeClass: DetectedShape["sizeClass"] =
+      longEdge < 40 ? "xs" :
+      longEdge < 80 ? "s" :
+      longEdge < 180 ? "m" :
+      longEdge < 340 ? "l" : "xl";
+    shapes.push({
+      kind,
+      x: mapped.x,
+      y: mapped.y,
+      width: mapped.w,
+      height: mapped.h,
+      aspectRatio: aspect,
+      fillDensity: density,
+      sizeClass,
+    });
   }
 
   // De-duplicate near-identical detections (can happen when inner and outer

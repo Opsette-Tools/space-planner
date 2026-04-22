@@ -27,8 +27,9 @@ import {
   nodeToPng,
 } from "@/lib/exporters";
 import { fileToReference } from "@/lib/referenceImport";
-import { detectShapes, type DetectedShape } from "@/lib/detectShapes";
-import { DetectionBar } from "@/components/editor/DetectionPreview";
+import { detectShapes } from "@/lib/detectShapes";
+import { classifyDetection } from "@/lib/classifyDetection";
+import { DetectionBar, type TypedDetection } from "@/components/editor/DetectionPreview";
 import { findDef } from "@/lib/objectLibrary";
 
 const { Text } = Typography;
@@ -79,11 +80,7 @@ export default function EditorPage() {
   const [renderReference, setRenderReference] = useState(true);
   // Shape detection state: pending preview, running flag.
   const [detecting, setDetecting] = useState(false);
-  const [detection, setDetection] = useState<{
-    shapes: DetectedShape[];
-    rectCount: number;
-    circleCount: number;
-  } | null>(null);
+  const [detections, setDetections] = useState<TypedDetection[] | null>(null);
 
   const canvasRef = useRef<CanvasHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -318,7 +315,13 @@ export default function EditorPage() {
     try {
       await new Promise((r) => requestAnimationFrame(() => r(null)));
       const result = await detectShapes(layout.reference);
-      setDetection(result);
+      // Classify each detection into a best-guess library type. User can
+      // retype entire groups via the preview panel before committing.
+      const typed: TypedDetection[] = result.shapes.map((s) => ({
+        ...s,
+        chosenType: classifyDetection(s),
+      }));
+      setDetections(typed);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Detection failed");
     } finally {
@@ -326,20 +329,28 @@ export default function EditorPage() {
     }
   }, [layout, detecting, message]);
 
-  const cancelDetection = useCallback(() => setDetection(null), []);
+  const cancelDetection = useCallback(() => setDetections(null), []);
+
+  /** Re-tag every pending detection whose current type is `oldType` to
+   *  `newType`. Bulk re-type is the primary interaction in the preview. */
+  const bulkRetype = useCallback((oldType: string, newType: string) => {
+    setDetections((prev) =>
+      prev
+        ? prev.map((d) => (d.chosenType === oldType ? { ...d, chosenType: newType } : d))
+        : prev,
+    );
+  }, []);
 
   // Commit all detected shapes as LayoutItems in a single history entry.
-  // Rectangles → room-rect (a filled rect). Circles → table-round (the only
-  // library def that actually renders as a circle; room-rounded is a
-  // rounded-corner rectangle, not a circle). User can retag freely.
+  // Each shape uses whatever library type the user confirmed/overrode in
+  // the preview panel. Falls back to room-rect if a type is missing.
   const commitDetection = useCallback(() => {
-    if (!detection || !layout) return;
-    const rectDef = findDef("room-rect");
-    const roundDef = findDef("table-round");
-    if (!rectDef || !roundDef) return;
+    if (!detections || !layout) return;
+    const fallback = findDef("room-rect");
+    if (!fallback) return;
     const maxZ = layout.items.reduce((m, i) => Math.max(m, i.zIndex), 0);
-    const newItems: LayoutItem[] = detection.shapes.map((s, i) => {
-      const def = s.kind === "circle" ? roundDef : rectDef;
+    const newItems: LayoutItem[] = detections.map((s, i) => {
+      const def = findDef(s.chosenType) ?? fallback;
       return {
         id: genId(),
         type: def.type,
@@ -362,10 +373,10 @@ export default function EditorPage() {
       };
     });
     history.set((prev) => (prev ? { ...prev, items: [...prev.items, ...newItems] } : prev));
-    setDetection(null);
+    setDetections(null);
     setSelectedIds(newItems.map((i) => i.id));
     message.success(`Added ${newItems.length} shape${newItems.length === 1 ? "" : "s"}`);
-  }, [detection, layout, history, message]);
+  }, [detections, layout, history, message]);
 
   const addItemFromDef = useCallback(
     (def: LibraryDef) => {
@@ -805,7 +816,7 @@ export default function EditorPage() {
         onReferenceRemove={removeReference}
         onReferenceDetect={runDetection}
         referenceDetecting={detecting}
-        referenceDetectDisabled={!!detection}
+        referenceDetectDisabled={!!detections}
       />
 
       <input
@@ -875,16 +886,15 @@ export default function EditorPage() {
               onUpdateItems={updateItems}
               onUpdateReference={updateReference}
               renderReference={renderReference}
-              previewShapes={detection?.shapes}
+              previewShapes={detections ?? undefined}
               onGestureStart={history.beginCoalesce}
               onGestureEnd={history.commitCoalesce}
               onZoomChange={(z) => setZoomPct(Math.round(z * 100))}
             />
-            {detection && (
+            {detections && (
               <DetectionBar
-                shapes={detection.shapes}
-                rectCount={detection.rectCount}
-                circleCount={detection.circleCount}
+                detections={detections}
+                onBulkRetype={bulkRetype}
                 onCommit={commitDetection}
                 onCancel={cancelDetection}
               />
