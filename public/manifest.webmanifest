@@ -1,15 +1,17 @@
 {
-  "name": "Planr — Spatial Layout Planner",
-  "short_name": "Planr",
-  "description": "Mobile-first spatial layout planner for floor plans, events, gardens, and seating.",
+  "name": "Space Planner — Opsette",
+  "short_name": "Space",
+  "description": "Spatial layouts for events, floor plans, and seating.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
-  "background_color": "#f7f5f0",
-  "theme_color": "#f7f5f0",
+  "orientation": "any",
+  "background_color": "#fafafa",
+  "theme_color": "#2f4f46",
+  "categories": ["productivity", "business"],
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
