@@ -41,9 +41,9 @@ import {
 } from "@/lib/templates";
 import { LAYOUT_TYPE_LABEL, type Layout as LayoutData, type LayoutType } from "@/lib/types";
 import { TemplatePreview } from "@/components/TemplatePreview";
-import { Logo } from "@/components/Logo";
+import { OpsetteHeader } from "@/components/opsette-header";
 
-const { Header, Content, Footer } = Layout;
+const { Content, Footer } = Layout;
 const { Title, Text, Paragraph, Link } = Typography;
 
 const TYPE_OPTIONS: LayoutType[] = ["floor", "event", "garden", "seating", "general"];
@@ -222,61 +222,33 @@ export default function Index() {
 
   return (
     <Layout style={{ minHeight: "100vh", background: "#f7f8fa" }}>
-      <Header
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-          height: 72,
-          padding: "0 24px",
-          background: "#ffffff",
-          borderBottom: "1px solid #eaedf1",
-          display: "grid",
-          gridTemplateColumns: "1fr auto 1fr",
-          alignItems: "center",
-          gap: 12,
-        }}
-      >
-        <div />
-        <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "center" }}>
-          <Logo size={40} color="#243958" />
-          <Title
-            level={3}
-            style={{
-              margin: 0,
-              fontSize: 22,
-              fontWeight: 600,
-              lineHeight: 1.1,
-              whiteSpace: "nowrap",
-            }}
-          >
-            Space Planner
-          </Title>
-        </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".json,application/json"
-            style={{ display: "none" }}
-            onChange={handleImport}
-          />
-          <input
-            ref={imageRef}
-            type="file"
-            accept={REFERENCE_ACCEPT}
-            style={{ display: "none" }}
-            onChange={handleImportImage}
-          />
-          <Dropdown.Button
-            type="primary"
-            menu={newMenu}
-            onClick={() => createUntitled("floor")}
-          >
-            <PlusOutlined /> New
-          </Dropdown.Button>
-        </div>
-      </Header>
+      <OpsetteHeader
+        rightExtra={
+          <>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".json,application/json"
+              style={{ display: "none" }}
+              onChange={handleImport}
+            />
+            <input
+              ref={imageRef}
+              type="file"
+              accept={REFERENCE_ACCEPT}
+              style={{ display: "none" }}
+              onChange={handleImportImage}
+            />
+            <Dropdown.Button
+              type="primary"
+              menu={newMenu}
+              onClick={() => createUntitled("floor")}
+            >
+              <PlusOutlined /> New
+            </Dropdown.Button>
+          </>
+        }
+      />
 
       <Content style={{ maxWidth: 1100, width: "100%", margin: "0 auto", padding: "24px 20px 48px" }}>
         <section style={{ marginBottom: 40 }}>
