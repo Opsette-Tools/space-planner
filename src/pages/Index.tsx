@@ -42,6 +42,7 @@ import {
 import { LAYOUT_TYPE_LABEL, type Layout as LayoutData, type LayoutType } from "@/lib/types";
 import { TemplatePreview } from "@/components/TemplatePreview";
 import { OpsetteHeader } from "@/components/opsette-header";
+import { ThemeToggleButton } from "@/components/ThemeToggleButton";
 
 const { Content, Footer } = Layout;
 const { Title, Text, Paragraph, Link } = Typography;
@@ -221,7 +222,7 @@ export default function Index() {
   });
 
   return (
-    <Layout style={{ minHeight: "100vh", background: "#f7f8fa" }}>
+    <Layout style={{ minHeight: "100vh" }}>
       <OpsetteHeader
         rightExtra={
           <>
@@ -246,6 +247,7 @@ export default function Index() {
             >
               <PlusOutlined /> New
             </Dropdown.Button>
+            <ThemeToggleButton />
           </>
         }
       />
